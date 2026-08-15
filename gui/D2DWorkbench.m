@@ -8,6 +8,7 @@ classdef D2DWorkbench < handle
         ModelTree
         ConfigTable
         ProbeDropDown
+        LaneDropDown
         Axes
         MetricsTable
         LogArea
@@ -23,39 +24,47 @@ classdef D2DWorkbench < handle
 
     methods
         function app=D2DWorkbench(root)
-            app.Root=root; app.Cfg=phyConfig();
+            app.Root=root; app.Cfg=loadD2DSharedConfig();
             app.buildUi(); app.populateModelTree(); app.populateConfigTable();
-            app.log('D2D PHY Workbench ready. Edit parameters, then run a link or test.');
+            syncD2DConfig(app.Cfg);
+            app.log('D2D PHY Workbench ready. GUI and Simulink share d2dCfg.');
         end
 
         function buildUi(app)
             app.Figure=uifigure('Name','D2D 112G PHY Model Workbench','Position',[40 40 1720 960],...
                 'Color',[0.95 0.96 0.98]);
-            main=uigridlayout(app.Figure,[1 3]); main.ColumnWidth={340,520,'1x'};
+            main=uigridlayout(app.Figure,[1 3]); main.ColumnWidth={300,540,'1x'};
             main.Padding=[12 12 12 12]; main.ColumnSpacing=12;
 
             left=uipanel(main,'Title','D2D IP Hierarchy','BackgroundColor',[1 1 1]); left.Layout.Column=1;
-            lg=uigridlayout(left,[2 1]); lg.RowHeight={32,'1x'}; lg.Padding=[8 8 8 8]; lg.RowSpacing=6;
+            lg=uigridlayout(left,[3 1]); lg.RowHeight={32,'1x',280}; lg.Padding=[8 8 8 8]; lg.RowSpacing=8;
             uilabel(lg,'Text','Databook-aligned x8 structure','FontWeight','bold','FontColor',[0.18 0.23 0.32]);
             app.ModelTree=uitree(lg,'SelectionChangedFcn',@(s,e)app.onTreeSelection(e));
+            statusPanel=uipanel(lg,'Title','Status','BackgroundColor',[0.98 0.99 1]);
+            sg=uigridlayout(statusPanel,[2 1]); sg.RowHeight={26,'1x'}; sg.Padding=[6 6 6 6];
+            app.StatusLabel=uilabel(sg,'Text','Idle','FontWeight','bold','FontColor',[0.15 0.35 0.22]);
+            app.LogArea=uitextarea(sg,'Editable','off','Value','');
 
             center=uipanel(main,'Title','Configuration and Tests','BackgroundColor',[1 1 1]); center.Layout.Column=2;
-            cg=uigridlayout(center,[3 1]); cg.RowHeight={'1x',260,140};
+            cg=uigridlayout(center,[2 1]); cg.RowHeight={'1x',260};
             cg.Padding=[8 8 8 8]; cg.RowSpacing=10;
             tabs=uitabgroup(cg); tabs.Layout.Row=1;
             cfgTab=uitab(tabs,'Title','Model Parameters');
-            cfgGrid=uigridlayout(cfgTab,[2 1]); cfgGrid.RowHeight={'1x',44};
+            cfgGrid=uigridlayout(cfgTab,[2 1]); cfgGrid.RowHeight={'1x',82};
             cfgGrid.Padding=[8 8 8 8]; cfgGrid.RowSpacing=8;
             app.ConfigTable=uitable(cfgGrid,'ColumnName',{'Group','Parameter','Value'},...
                 'ColumnWidth',{95,230,130},'ColumnEditable',[false false true],...
                 'CellEditCallback',@(s,e)app.onConfigEdit(e));
-            btnRow=uigridlayout(cfgGrid,[1 4]); btnRow.Layout.Row=2; btnRow.ColumnWidth={'1x','1x','1x','1x'};
-            btnRow.Padding=[0 0 0 0]; btnRow.ColumnSpacing=8;
-            uibutton(btnRow,'Text','Apply','FontWeight','bold','ButtonPushedFcn',@(s,e)app.applyConfigTable());
-            uibutton(btnRow,'Text','Reset Ideal','ButtonPushedFcn',@(s,e)app.resetConfig());
-            uibutton(btnRow,'Text','Reset Typical','ButtonPushedFcn',@(s,e)app.resetTypical());
+            btnRow=uigridlayout(cfgGrid,[2 3]); btnRow.Layout.Row=2;
+            btnRow.ColumnWidth={'1x','1x','1x'}; btnRow.RowHeight={'1x','1x'};
+            btnRow.Padding=[0 0 0 0]; btnRow.ColumnSpacing=8; btnRow.RowSpacing=6;
+            uibutton(btnRow,'Text','Apply + Sync','FontWeight','bold','ButtonPushedFcn',@(s,e)app.applyConfigTable());
+            uibutton(btnRow,'Text','Load from SLX','ButtonPushedFcn',@(s,e)app.loadSharedConfig());
             uibutton(btnRow,'Text','Run x8 Link','FontWeight','bold','BackgroundColor',[0.12 0.42 0.72],...
                 'FontColor',[1 1 1],'ButtonPushedFcn',@(s,e)app.runLink());
+            uibutton(btnRow,'Text','Reset Ideal','ButtonPushedFcn',@(s,e)app.resetConfig());
+            uibutton(btnRow,'Text','Reset Typical','ButtonPushedFcn',@(s,e)app.resetTypical());
+            uilabel(btnRow,'Text','Shared variable: d2dCfg','HorizontalAlignment','center','FontColor',[0.35 0.4 0.48]);
 
             testTab=uitab(tabs,'Title','Test Parameters');
             tg=uigridlayout(testTab,[7 2]); tg.ColumnWidth={135,'1x'};
@@ -81,27 +90,27 @@ classdef D2DWorkbench < handle
             uibutton(bg,'Text','Open Results Folder','ButtonPushedFcn',@(s,e)winopen(fullfile(app.Root,'results')));
             uibutton(bg,'Text','Clear Log','ButtonPushedFcn',@(s,e)set(app.LogArea,'Value',''));
 
-            statusPanel=uipanel(cg,'Title','Status'); statusPanel.Layout.Row=3;
-            sg=uigridlayout(statusPanel,[2 1]); sg.RowHeight={26,'1x'};
-            app.StatusLabel=uilabel(sg,'Text','Idle','FontWeight','bold');
-            app.LogArea=uitextarea(sg,'Editable','off','Value','');
-
             right=uipanel(main,'Title','White-box Probes and Results','BackgroundColor',[1 1 1]); right.Layout.Column=3;
-            rg=uigridlayout(right,[4 1]); rg.RowHeight={44,'2x',190,118};
+            rg=uigridlayout(right,[4 1]); rg.RowHeight={44,'2x',230,118};
             rg.Padding=[8 8 8 8]; rg.RowSpacing=10;
-            probeRow=uigridlayout(rg,[1 2]); probeRow.ColumnWidth={70,'1x'}; probeRow.Padding=[0 0 0 0];
+            probeRow=uigridlayout(rg,[1 4]); probeRow.ColumnWidth={48,'1x',42,105}; probeRow.Padding=[0 0 0 0]; probeRow.ColumnSpacing=8;
             uilabel(probeRow,'Text','Probe','FontWeight','bold');
-            app.ProbeDropDown=uidropdown(probeRow,'Items',app.probeItems(),'Value','RX lane 1 CTLE output',...
-                'ValueChangedFcn',@(s,e)app.plotSelectedProbe());
+            app.ProbeDropDown=uidropdown(probeRow,'Items',app.probeItems(),'Value','RX CTLE output');
+            uilabel(probeRow,'Text','Lane','FontWeight','bold');
+            app.LaneDropDown=uidropdown(probeRow,'Items',app.laneItems(),'Value','Lane 1',...
+                'ValueChangedFcn',@(s,e)app.plotSelectedProbeMulti());
+            app.ProbeDropDown.ValueChangedFcn=@(s,e)app.plotSelectedProbeMulti();
             app.Axes=uiaxes(rg); title(app.Axes,'Run the model to view an internal node'); grid(app.Axes,'on');
             app.Axes.Box='on'; app.Axes.FontSize=11;
-            app.MetricsTable=uitable(rg,'ColumnName',{'Metric','Value'},'ColumnWidth',{190,'1x'});
+            app.MetricsTable=uitable(rg,'ColumnName',{'Lane','BER','Errors','Measured bits','Phase','Delay UI','CTLE gain','Eye height'},...
+                'ColumnWidth',{85,82,62,88,52,62,76,76});
             uitextarea(rg,'Editable','off','Value',{
                 'WORKFLOW',...
                 '1  Edit and apply model parameters',...
                 '2  Run the x8 link',...
-                '3  Select any white-box probe',...
-                '4  Run sweeps or T1-T9; artifacts go to results/'});
+                '3  Select a probe and Lane 1-8 / All Lanes',...
+                '4  Inspect per-lane metrics and worst lane',...
+                '5  Run sweeps or T1-T9; artifacts go to results/'});
         end
 
         function populateModelTree(app)
@@ -156,31 +165,53 @@ classdef D2DWorkbench < handle
                 parts=strsplit(app.ConfigPaths{k},'.'); old=app.getNested(app.Cfg,parts);
                 value=app.parseValue(data{k,3},old); app.Cfg=app.setNested(app.Cfg,parts,value);
             end
-            app.log('Configuration applied.');
+            syncD2DConfig(app.Cfg);
+            app.log('Configuration applied and synchronized to d2dCfg / Simulink.');
         end
 
         function resetConfig(app)
-            app.Cfg=phyConfig('ideal'); app.populateConfigTable(); app.log('Configuration reset to ideal verification baseline.');
+            app.Cfg=phyConfig('ideal'); app.populateConfigTable(); syncD2DConfig(app.Cfg);
+            app.log('Configuration reset to ideal baseline and synchronized.');
         end
 
         function resetTypical(app)
-            app.Cfg=phyConfig('typical'); app.populateConfigTable();
-            app.log('Configuration reset to typical working non-ideal profile.');
+            app.Cfg=phyConfig('typical'); app.populateConfigTable(); syncD2DConfig(app.Cfg);
+            app.log('Configuration reset to typical profile and synchronized.');
+        end
+
+        function loadSharedConfig(app)
+            app.Cfg=loadD2DSharedConfig(); app.populateConfigTable();
+            app.log('Configuration loaded from the Simulink/shared d2dCfg workspace.');
         end
 
         function runLink(app)
             app.execute('x8 link',@doRun);
             function doRun()
                 app.applyConfigTable(); app.Phy=D2DPHY(); app.Phy.configure(app.Cfg); app.Result=app.Phy.run();
-                app.MetricsTable.Data={
-                    'Aggregate BER',sprintf('%.3e',app.Result.aggregateBer);
-                    'Errors',sprintf('%d',sum(app.Result.errCnt));
-                    'Measured bits',sprintf('%d',sum(app.Result.nMeasured));
-                    'Lane 1 phase',sprintf('%d',app.Phy.rxPma.lane(1).bestPhase);
-                    'Lane 1 delay UI',sprintf('%d',app.Phy.rxPma.lane(1).delayUI);
-                    'CTLE AGC gain',sprintf('%.4f',app.Phy.rxPma.lane(1).afe.agcGain)};
-                app.plotSelectedProbe(); app.log(sprintf('x8 link complete: BER %.3e',app.Result.aggregateBer));
+                app.updateLaneMetrics();
+                app.plotSelectedProbeMulti(); app.log(sprintf('x8 link complete: BER %.3e',app.Result.aggregateBer));
             end
+        end
+
+        function updateLaneMetrics(app)
+            nLane=numel(app.Phy.rxPma.lane); err=app.Result.errCnt(:); nBits=app.Result.nMeasured(:);
+            ber=err./max(nBits,1); phase=zeros(nLane,1); delay=zeros(nLane,1); gain=zeros(nLane,1); eye=zeros(nLane,1);
+            for k=1:nLane
+                phase(k)=app.Phy.rxPma.lane(k).bestPhase; delay(k)=app.Phy.rxPma.lane(k).delayUI;
+                gain(k)=app.Phy.rxPma.lane(k).afe.agcGain;
+                try
+                    eye(k)=eyeHeight(app.Phy.rxPma.lane(k).afe.ctleOut,phase(k),app.Cfg.link.sps,app.Cfg.link.modulation);
+                catch
+                    eye(k)=NaN;
+                end
+            end
+            labels=["Aggregate"; "Lane "+string((1:nLane)')];
+            totalErr=sum(err); totalBits=sum(nBits); totalBer=totalErr/max(totalBits,1);
+            app.MetricsTable.Data=table(labels,[totalBer;ber],[totalErr;err],[totalBits;nBits],...
+                [NaN;phase],[NaN;delay],[NaN;gain],[NaN;eye],...
+                'VariableNames',{'Lane','BER','Errors','MeasuredBits','Phase','DelayUI','CTLEGain','EyeHeight'});
+            [worstBer,worst]=max(ber);
+            app.log(sprintf('Worst lane: Lane %d, BER %.3e, eye height %.4f.',worst,worstBer,eye(worst)));
         end
 
         function runSweep(app,kind)
@@ -259,14 +290,42 @@ classdef D2DWorkbench < handle
 
         function onTreeSelection(app,event)
             if isempty(event.SelectedNodes), return; end
-            data=event.SelectedNodes.NodeData; app.log(['Selected model block: ' char(data)]);
-            if startsWith(data,'txPad'), app.ProbeDropDown.Value='TX lane 1 pad';
-            elseif startsWith(data,'channel'), app.ProbeDropDown.Value='Channel 1 output';
-            elseif startsWith(data,'ctle') || startsWith(data,'afe'), app.ProbeDropDown.Value='RX lane 1 CTLE output';
-            elseif startsWith(data,'slicer'), app.ProbeDropDown.Value='RX lane 1 slicer samples';
+            data=char(event.SelectedNodes.NodeData); app.log(['Selected model block: ' data]);
+            token=regexp(data,'(\d+)$','tokens','once');
+            if ~isempty(token) && str2double(token{1})<=8, app.LaneDropDown.Value=['Lane ' token{1}]; end
+            if startsWith(data,'txFfe'), app.ProbeDropDown.Value='TX FFE output';
+            elseif startsWith(data,'txPad'), app.ProbeDropDown.Value='TX pad';
+            elseif startsWith(data,'channel'), app.ProbeDropDown.Value='Channel output';
+            elseif startsWith(data,'ctle') || startsWith(data,'afe'), app.ProbeDropDown.Value='RX CTLE output';
+            elseif startsWith(data,'slicer'), app.ProbeDropDown.Value='RX slicer samples';
             elseif startsWith(data,'rxPll'), app.ProbeDropDown.Value='RX PLL residual phase';
             end
-            if ~isempty(app.Phy), app.plotSelectedProbe(); end
+            if ~isempty(app.Phy), app.plotSelectedProbeMulti(); end
+        end
+
+        function plotSelectedProbeMulti(app)
+            if isempty(app.Phy), return; end
+            try
+                label=app.ProbeDropDown.Value; allLanes=strcmp(app.LaneDropDown.Value,'All Lanes');
+                if allLanes, lanes=1:8; else, lanes=str2double(extractAfter(app.LaneDropDown.Value,'Lane ')); end
+                [~,isWave]=app.getProbeLane(label,lanes(1)); cla(app.Axes,'reset'); hold(app.Axes,'on');
+                app.Axes.XScale='linear'; app.Axes.YScale='linear'; app.Axes.Box='on'; app.Axes.FontSize=11;
+                for k=lanes
+                    [x,isWave]=app.getProbeLane(label,k); x=x(:);
+                    if isWave
+                        sps=app.Cfg.link.sps; n=floor(numel(x)/(2*sps)); n=min(n,1000);
+                        if n>0
+                            seg=reshape(x(1:n*2*sps),2*sps,n);
+                            if allLanes, plot(app.Axes,(0:2*sps-1)'/sps,seg); else, plot(app.Axes,(0:2*sps-1)'/sps,seg,'Color',[0 .25 .7]); end
+                        end
+                    else
+                        if allLanes, plot(app.Axes,x); else, plot(app.Axes,x,'LineWidth',1); end
+                    end
+                end
+                hold(app.Axes,'off'); grid(app.Axes,'on'); title(app.Axes,[label ' | ' app.LaneDropDown.Value]);
+                if isWave, xlabel(app.Axes,'UI'); ylabel(app.Axes,'Amplitude'); else, xlabel(app.Axes,'Symbol'); ylabel(app.Axes,'UI'); end
+                if allLanes, legend(app.Axes,'Lane 1','Lane 2','Lane 3','Lane 4','Lane 5','Lane 6','Lane 7','Lane 8','Location','eastoutside'); end
+            catch ex, app.log(['Probe error: ' ex.message]); end
         end
 
         function plotSelectedProbe(app)
@@ -282,6 +341,23 @@ classdef D2DWorkbench < handle
                     plot(app.Axes,x,'LineWidth',1); xlabel(app.Axes,'Symbol'); ylabel(app.Axes,'UI'); title(app.Axes,app.ProbeDropDown.Value); grid(app.Axes,'on');
                 end
             catch ex, app.log(['Probe error: ' ex.message]); end
+        end
+
+        function [x,isWave]=getProbeLane(app,label,k)
+            isWave=true;
+            switch label
+                case 'TX FFE output', x=app.Phy.txPma.lane(k).ffe.out; isWave=false;
+                case 'TX pad', x=app.Phy.txPma.lane(k).driver.txPad;
+                case 'Channel output', x=app.Phy.channel(k).out;
+                case 'RX TERM output', x=app.Phy.rxPma.lane(k).afe.termOut;
+                case 'RX CTLE raw', x=app.Phy.rxPma.lane(k).afe.ctleRaw;
+                case 'RX CTLE output', x=app.Phy.rxPma.lane(k).afe.ctleOut;
+                case 'RX slicer samples', x=app.Phy.rxPma.lane(k).slicer.samples; isWave=false;
+                case 'RX PLL input phase', x=app.Phy.rxPma.support.pll.log.in; isWave=false;
+                case 'RX PLL recovered phase', x=app.Phy.rxPma.support.pll.recoveredUI; isWave=false;
+                case 'RX PLL residual phase', x=app.Phy.rxPma.support.pll.residualUI; isWave=false;
+            end
+            x=x(:);
         end
 
         function [x,isWave]=getProbe(app,label)
@@ -318,9 +394,12 @@ classdef D2DWorkbench < handle
 
     methods (Static)
         function items=probeItems()
-            items={'TX lane 1 FFE output','TX lane 1 pad','Channel 1 output','RX lane 1 TERM output',...
-                'RX lane 1 CTLE raw','RX lane 1 CTLE output','RX lane 1 slicer samples',...
+            items={'TX FFE output','TX pad','Channel output','RX TERM output',...
+                'RX CTLE raw','RX CTLE output','RX slicer samples',...
                 'RX PLL input phase','RX PLL recovered phase','RX PLL residual phase'};
+        end
+        function items=laneItems()
+            items={'Lane 1','Lane 2','Lane 3','Lane 4','Lane 5','Lane 6','Lane 7','Lane 8','All Lanes'};
         end
         function text=valueToText(v)
             if ischar(v) || isstring(v), text=char(v); elseif islogical(v), text=mat2str(v); else, text=num2str(v,16); end
