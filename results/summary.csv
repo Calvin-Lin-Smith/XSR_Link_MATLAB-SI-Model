@@ -1,0 +1,10 @@
+test,pass,detail
+T1,1,"16 configurations and eye PNG files"
+T2,1,"BER increases from 0 to 10 dB loss"
+T3,1,"Empirical bathtub; no unsupported 1e-12 claim"
+T4,1,"P9 formula and constrained tap scan"
+T5,1,"CTLE improves BER and eye opening"
+T6,1,"PRQS10 explicitly marked surrogate; exact injection counts"
+T7,1,"Equal baud comparison; PAM4 BER exceeds NRZ"
+T8,1,"Interior BER and residual-phase optimum"
+T9,1,"x8 shallow, serial, and two-endpoint NRZ"
