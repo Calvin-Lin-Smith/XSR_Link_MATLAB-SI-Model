@@ -43,6 +43,17 @@ switch profile
         cfg.link.seed=202409; cfg.link.lineRate_Gbps=112.5;
         cfg.link.baud_GBd=56.25; cfg.link.baud_Gbps=56.25;
         cfg.rawPcs.pattern='PRBS31'; cfg.phy.nLane=8;
+        cfg.txPma.lane.ffeMode='three_tap'; cfg.txPma.lane.ffeOffsets=[-1 0 1];
+        cfg.txPma.lane.ffeCoeffs=[-0.01 0.98 -0.01]; cfg.txPma.lane.ffeNormalize=true;
+        cfg.txPma.lane.ffeCurrentConstraint=1;
+        cfg.txPma.lane.ffe=struct('mode','three_tap','offsets',[-1 0 1],...
+            'coeffs',[-0.01 0.98 -0.01],'normalize',true,'currentConstraint',1);
+        cfg.txPma.lane.sixTapPreset=struct('offsets',[-2 -1 0 1 2 3],...
+            'coeffs',[-0.03 -0.05 0.88 -0.06 -0.04 -0.02],...
+            'description','model-selected regression assumption; not paper-disclosed coefficients');
+        cfg.txPma.lane.enableDacQuantization=true; cfg.txPma.lane.dacLevels=206;
+        cfg.txPma.lane.targetSwing=1; cfg.txPma.lane.gainError=0;
+        cfg.txPma.lane.enableSwingCalibration=true;
         cfg.channel.mode='legacy_nyquist'; cfg.channel.refFreq_GHz=28;
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
         cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
