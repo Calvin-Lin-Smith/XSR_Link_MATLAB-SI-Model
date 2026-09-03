@@ -35,6 +35,33 @@ switch profile
         cfg.txPma.lane.ffeNormalize=true;
         cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.clockMode='forwarded';
         cfg.channel.lossNyq_dB=0;
+    case 'vlsi2024_xsr'
+        cfg.paper.id='VLSI2024_XSR_3nm'; cfg.paper.mode='link_behavioral';
+        cfg.paper.rateRange_Gbps=[9.8 113]; cfg.paper.txEyeRate_Gbps=112.5;
+        cfg.paper.berRate_Gbps=112; cfg.paper.headlineRate_Gbps=113;
+        cfg.link.modulation='PAM4'; cfg.link.sps=16; cfg.link.nBits=2^18;
+        cfg.link.seed=202409; cfg.link.lineRate_Gbps=112.5;
+        cfg.link.baud_GBd=56.25; cfg.link.baud_Gbps=56.25;
+        cfg.rawPcs.pattern='PRBS31'; cfg.phy.nLane=8;
+        cfg.channel.mode='legacy_nyquist'; cfg.channel.refFreq_GHz=28;
+        cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
+        cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
+        cfg.model.useReferenceAlign=false; cfg.model.enablePaperAdaptation=false;
+        cfg.model.resultRoot='results/vlsi2024_xsr';
+        cfg.paper.facts.packageTopology='2D/2.5D CoWoS';
+        cfg.paper.facts.channelLength_mm=[1 80];
+        cfg.paper.facts.nextAt28GHz_dB=-40; cfg.paper.facts.fextAt28GHz_dB=-38;
+        cfg.paper.facts.quotedEnergy_pJ_per_bit=0.9; cfg.paper.facts.dacLevels=206;
+        cfg.paper.facts.ctleMaxBoost_dB=6; cfg.paper.facts.ctleMaxStep_dB=0.2;
+        cfg.paper.facts.samplerRoleCounts=struct('data',12,'edge',4,'spare',4,'total',20);
+        cfg.paper.facts.dllCount=2; cfg.paper.facts.piCount=1;
+        cfg.paper.facts.piInlDnl='< +/-0.5 LSB';
+        cfg.paper.facts.pllTxIntegratedJitter_fs=194;
+        cfg.paper.facts.pllTxIntegratedJitterContext='PLL+TX integrated; filter/measurement context';
+        cfg.paper.facts.table1LossAtRef_dB=10.8;
+        cfg.paper.assumptions.channelModel='legacy Nyquist-normalized bootstrap until Stage C';
+        cfg.paper.assumptions.quotedEnergyScope='quoted only; not a model prediction';
+        cfg.paper.assumptions.crosstalk='NEXT/FEXT facts recorded; MIMO crosstalk unmodeled';
     otherwise
         error('phyConfig:Profile','Unknown configuration profile: %s',profile);
 end
