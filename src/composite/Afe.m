@@ -3,9 +3,19 @@ classdef Afe < Blk
         term
         ctle
         termOut = []
+        acPreOut = []
         ctleRaw = []
+        acPostOut = []
         ctleOut = []
+        levelShiftOut = []
         agcGain = 1
+        appliedAgcGain = 1
+        enableAcPre = false
+        enableAcPost = false
+        acPreCorner_UI = 0.01
+        acPostCorner_UI = 0.01
+        acInitialState = 'steady_state'
+        enableAgc = true
     end
     methods
         function obj=Afe(name)
@@ -15,12 +25,31 @@ classdef Afe < Blk
         function configure(obj,c)
             configure@Blk(obj,c);
             obj.term.configure(struct('gain',c.termGain));
-            obj.ctle.configure(struct('sps',c.sps,'boostDb',c.ctleBoost_dB,'fz',c.ctleFz));
+            obj.enableAcPre=false; obj.enableAcPost=false; obj.acInitialState='steady_state'; obj.enableAgc=true;
+            if isfield(c,'enableAcPre'), obj.enableAcPre=logical(c.enableAcPre); end
+            if isfield(c,'enableAcPost'), obj.enableAcPost=logical(c.enableAcPost); end
+            if isfield(c,'acPreCorner_UI'), obj.acPreCorner_UI=c.acPreCorner_UI; end
+            if isfield(c,'acPostCorner_UI'), obj.acPostCorner_UI=c.acPostCorner_UI; end
+            if isfield(c,'acInitialState'), obj.acInitialState=char(c.acInitialState); end
+            if isfield(c,'enableAgc'), obj.enableAgc=logical(c.enableAgc); end
+            cc=struct('sps',c.sps,'boostDb',c.ctleBoost_dB,'fz',c.ctleFz);
+            if isfield(c,'ctlePolicy'), cc.policy=c.ctlePolicy; end
+            obj.ctle.configure(cc);
         end
         function y=run(obj,x)
-            obj.termOut=obj.term.run(x); raw=obj.ctle.run(obj.termOut); obj.ctleRaw=raw;
-            den=max(rms(raw),eps); obj.agcGain=rms(obj.termOut)/den; y=raw*obj.agcGain; obj.ctleOut=y;
-            obj.record('in',x(:)); obj.record('termOut',obj.termOut); obj.record('ctleRaw',raw); obj.record('out',y);
+            obj.termOut=obj.term.run(x); obj.acPreOut=obj.termOut;
+            if obj.enableAcPre, obj.acPreOut=dspAcCouple(obj.termOut,obj.cfg.sps,obj.acPreCorner_UI,obj.acInitialState); end
+            raw=obj.ctle.run(obj.acPreOut); obj.ctleRaw=raw; obj.acPostOut=raw;
+            if obj.enableAcPost, obj.acPostOut=dspAcCouple(raw,obj.cfg.sps,obj.acPostCorner_UI,obj.acInitialState); end
+            if obj.enableAgc
+                den=max(rms(raw),eps); obj.agcGain=rms(obj.termOut)/den;
+            else
+                obj.agcGain=1;
+            end
+            obj.appliedAgcGain=obj.agcGain; y=obj.acPostOut*obj.agcGain; obj.ctleOut=y; obj.levelShiftOut=y;
+            obj.record('in',x(:)); obj.record('termOut',obj.termOut); obj.record('acPreOut',obj.acPreOut);
+            obj.record('ctleRaw',obj.ctleRaw); obj.record('acPostOut',obj.acPostOut); obj.record('out',y);
+            obj.log.appliedAgcGain=obj.appliedAgcGain;
         end
         function dump(obj,indent)
             if nargin<2,indent='';end, dump@Blk(obj,indent);

@@ -2,8 +2,13 @@ function y = dspChannel(x, sps, lossDb, poles, varargin)
 %DSPCHANNEL Legacy Nyquist or calibrated analytic insertion-loss channel.
 x = x(:);
 validateattributes(sps, {'numeric'}, {'scalar','integer','positive'});
-if nargin == 3 && isstruct(lossDb)
-    options=lossDb; mode=getField(options,'mode','analytic_il');
+if (nargin == 3 && isstruct(lossDb)) || (nargin >= 5 && isstruct(varargin{1}))
+    if nargin == 3, options=lossDb; else, options=varargin{1}; end
+    if nargin >= 5
+        if ~isfield(options,'lossAtRef_dB'), options.lossAtRef_dB=lossDb; end
+        if ~isfield(options,'poles'), options.poles=poles; end
+    end
+    mode=getField(options,'mode','analytic_il');
     if ~strcmpi(char(mode),'analytic_il'), error('dspChannel:Mode','Unsupported channel mode: %s',char(mode)); end
     refFreq=getField(options,'refFreq_GHz',[]); baud=getField(options,'baud_GBd',[]);
     lossDb=getField(options,'lossAtRef_dB',[]); poles=getField(options,'poles',3);

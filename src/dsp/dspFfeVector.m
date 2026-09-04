@@ -11,6 +11,7 @@ if any(tapOffsets~=fix(tapOffsets)) || numel(unique(tapOffsets))~=numel(tapOffse
 end
 if sum(tapOffsets==0)~=1, error('dspFfeVector:Main','Exactly one main cursor at offset zero is required.'); end
 normalize=true; if isfield(options,'normalize'), normalize=logical(options.normalize); end
+if ~isscalar(normalize), error('dspFfeVector:Normalize','normalize must be scalar.'); end
 hasConstraint=isfield(options,'currentConstraint');
 if hasConstraint, currentConstraint=options.currentConstraint;
 elseif normalize, currentConstraint=1;
@@ -35,6 +36,8 @@ meta=struct('rawCoefficients',raw,'appliedCoefficients',applied,'rawOffsets',tap
     'currentConstraint',currentConstraint,'normalized',normalize,...
     'impulseResponse',applyTaps(impulse,applied,tapOffsets));
 meta.pulseResponse=meta.impulseResponse;
+meta.rawCoeffs=meta.rawCoefficients; meta.appliedCoeffs=meta.appliedCoefficients;
+meta.offsets=meta.appliedOffsets; meta.appliedCurrentConstraint=meta.currentConstraint;
 end
 
 function y=applyTaps(x,coeffs,offsets)

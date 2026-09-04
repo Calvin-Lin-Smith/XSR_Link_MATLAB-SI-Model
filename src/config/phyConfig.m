@@ -39,6 +39,8 @@ switch profile
         cfg.paper.id='VLSI2024_XSR_3nm'; cfg.paper.mode='link_behavioral';
         cfg.paper.rateRange_Gbps=[9.8 113]; cfg.paper.txEyeRate_Gbps=112.5;
         cfg.paper.berRate_Gbps=112; cfg.paper.headlineRate_Gbps=113;
+        cfg.paper.rateContext=struct('range_Gbps',[9.8 113],'txEye_Gbps',112.5,...
+            'ber_Gbps',112,'headlineTable_Gbps',113);
         cfg.link.modulation='PAM4'; cfg.link.sps=16; cfg.link.nBits=2^18;
         cfg.link.seed=202409; cfg.link.lineRate_Gbps=112.5;
         cfg.link.baud_GBd=56.25; cfg.link.baud_Gbps=56.25;
@@ -57,19 +59,33 @@ switch profile
         cfg.channel.mode='analytic_il'; cfg.channel.refFreq_GHz=28; cfg.channel.baud_GBd=56.25;
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
         cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
+        cfg.rxPma.lane.terminationMode='AC'; cfg.rxPma.lane.enableAcPre=true; cfg.rxPma.lane.enableAcPost=true;
+        cfg.rxPma.lane.acPreCorner_UI=0.01; cfg.rxPma.lane.acPostCorner_UI=0.01;
+        cfg.rxPma.lane.acInitialState='steady_state'; cfg.rxPma.lane.enableAgc=false;
+        cfg.rxPma.lane.ctlePolicy='paper_grid'; cfg.rxPma.lane.ctleBoost_dB=4;
+        cfg.rxPma.lane.ctleGrid_dB=0:0.2:6; cfg.rxPma.lane.ctleAppliedBoost_dB=4;
+        cfg.rxPma.lane.samplerRoles=struct('enabled',true,'quarterRateBranches',4,...
+            'roleCounts',struct('data',12,'edge',4,'spare',4,'total',20),...
+            'levelShiftCodes',struct('data',[2 0 -2],'edge',0,'spare',[3 1 -1 -3]),...
+            'thresholdAssumptions',[-2 0 2],...
+            'offsetCalibrationPlaceholder','not implemented in Stage D');
         cfg.model.useReferenceAlign=false; cfg.model.enablePaperAdaptation=false;
         cfg.model.resultRoot='results/vlsi2024_xsr';
         cfg.paper.facts.packageTopology='2D/2.5D CoWoS';
         cfg.paper.facts.channelLength_mm=[1 80];
         cfg.paper.facts.nextAt28GHz_dB=-40; cfg.paper.facts.fextAt28GHz_dB=-38;
+        cfg.paper.facts.next_dB=-40; cfg.paper.facts.fext_dB=-38;
         cfg.paper.facts.quotedEnergy_pJ_per_bit=0.9; cfg.paper.facts.dacLevels=206;
+        cfg.paper.facts.energy_pJ_per_bit=0.9;
         cfg.paper.facts.ctleMaxBoost_dB=6; cfg.paper.facts.ctleMaxStep_dB=0.2;
         cfg.paper.facts.samplerRoleCounts=struct('data',12,'edge',4,'spare',4,'total',20);
         cfg.paper.facts.dllCount=2; cfg.paper.facts.piCount=1;
         cfg.paper.facts.piInlDnl='< +/-0.5 LSB';
+        cfg.paper.facts.piInlDnl_LSB='< +/-0.5 LSB';
         cfg.paper.facts.pllTxIntegratedJitter_fs=194;
         cfg.paper.facts.pllTxIntegratedJitterContext='PLL+TX integrated; filter/measurement context';
         cfg.paper.facts.table1LossAtRef_dB=10.8;
+        cfg.paper.facts.table1Loss_dB=10.8; cfg.paper.facts.table1_IL_dB=10.8;
         cfg.paper.assumptions.channelModel='legacy Nyquist-normalized bootstrap until Stage C';
         cfg.paper.assumptions.quotedEnergyScope='quoted only; not a model prediction';
         cfg.paper.assumptions.crosstalk='NEXT/FEXT facts recorded; MIMO crosstalk unmodeled';

@@ -9,6 +9,8 @@ cfg=phyConfig('vlsi2024_xsr'); cfg.link.nBits=nBits; cfg.phy.nLane=nLane;
 switch mode
     case {'baseline','debug_1lane'}
         r=runModel(cfg);
+        cfg.model.appliedFfe=r.model.txPma.lane(1).ffe.tapMeta;
+        cfg.model.appliedDac=r.model.txPma.lane(1).driver.dacMeta;
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
         writeJson(cfg,fullfile(resultRoot,'config.json'));
         writeAssumptions(fullfile(resultRoot,'assumptions.md'));
@@ -40,6 +42,32 @@ switch mode
         writetable(response,fullfile(resultRoot,'channel_response.csv'));
         writeJson(cfg,fullfile(resultRoot,'config.json'));
         out=struct('mode',mode,'cfg',cfg,'metrics',metrics,'channelIL',il,'resultRoot',resultRoot);
+    case {'static_checkpoint','static','milestone'}
+        base=run_vlsi2024_xsr('baseline',nBits); cfg=base.cfg; resultRoot=base.resultRoot;
+        loss=run_vlsi2024_xsr('loss_sweep',nBits); writetable(loss.channelIL,fullfile(resultRoot,'channel_il.csv'));
+        cfg3=cfg; cfg3.txPma.lane.ffeMode='three_tap'; r3=runModel(cfg3);
+        cfg6=cfg; cfg6.txPma.lane.ffeMode='six_tap'; cfg6.txPma.lane.ffeOffsets=cfg.txPma.lane.sixTapPreset.offsets;
+        cfg6.txPma.lane.ffeCoeffs=cfg.txPma.lane.sixTapPreset.coeffs; r6=runModel(cfg6);
+        ffe=array2table([3 sum(r3.result.errCnt) sum(r3.result.nMeasured) sum(r3.result.errCnt)/max(sum(r3.result.nMeasured),1) cfg.link.seed; ...
+            6 sum(r6.result.errCnt) sum(r6.result.nMeasured) sum(r6.result.errCnt)/max(sum(r6.result.nMeasured),1) cfg.link.seed],...
+            'VariableNames',{'tap_count','errors','measured_bits','empirical_BER','seed'});
+        ffe.coefficients=[string(mat2str(cfg3.txPma.lane.ffeCoeffs));string(mat2str(cfg6.txPma.lane.ffeCoeffs))];
+        writetable(ffe,fullfile(resultRoot,'ffe_3_vs_6.csv'));
+        cfgOff=cfg; cfgOff.rxPma.lane.enableAcPre=false; cfgOff.rxPma.lane.enableAcPost=false; roff=runModel(cfgOff);
+        cfgOn=cfg; ron=runModel(cfgOn);
+        ac=array2table([0 cfgOff.rxPma.lane.ctleBoost_dB cfgOff.rxPma.lane.ctleBoost_dB mean(roff.model.rxPma.lane(1).afe.acPostOut(end/2:end)) cfg.link.seed; ...
+            1 cfgOn.rxPma.lane.ctleBoost_dB cfgOn.rxPma.lane.ctleBoost_dB mean(ron.model.rxPma.lane(1).afe.acPostOut(end/2:end)) cfg.link.seed],...
+            'VariableNames',{'ac_enabled','ctle_requested_dB','ctle_applied_dB','long_run_offset','seed'});
+        grid=cfg.rxPma.lane.ctleGrid_dB(:);
+        ac=[ac; array2table([nan(numel(grid),1) grid grid nan(numel(grid),1) repmat(cfg.link.seed,numel(grid),1)],...
+            'VariableNames',ac.Properties.VariableNames)];
+        writetable(ac,fullfile(resultRoot,'ac_ctle.csv'));
+        summary=[summaryRow('baseline',base.result,cfg); summaryRow('ffe_3tap',r3.result,cfg); ...
+            summaryRow('ffe_6tap',r6.result,cfg); summaryRow('ac_off',roff.result,cfg); summaryRow('ac_on',ron.result,cfg)];
+        writetable(summary,fullfile(resultRoot,'static_regression_summary.csv'));
+        fid=fopen(fullfile(resultRoot,'assumptions.md'),'a'); fprintf(fid,'\n- Static A-D checkpoint retains legacy oracle/reference-bit alignment; it is not the paper BB-CDR result.\n'); fclose(fid);
+        out=struct('mode',mode,'cfg',cfg,'baseline',base,'loss',loss,'ffe',ffe,'acCtle',ac,...
+            'summary',summary,'resultRoot',resultRoot);
     otherwise
         error('run_vlsi2024_xsr:Mode','Unsupported mode: %s',mode);
 end
@@ -68,8 +96,15 @@ end
 
 function metrics=metricTable(r,cfg)
 lanes=(1:numel(r.result.errCnt))'; n=numel(lanes);
-metrics=table(lanes,r.result.errCnt(:),r.result.nMeasured(:),r.result.ber(:),repmat(cfg.link.seed,n,1),...
-    'VariableNames',{'lane','errors','measured_bits','empirical_BER','seed'});
+upper=zeros(n,1); for k=1:n, upper(k)=max(r.result.ber(k),3/max(r.result.nMeasured(k),1)); end
+metrics=table(lanes,r.result.errCnt(:),r.result.nMeasured(:),r.result.ber(:),repmat(cfg.link.seed,n,1),upper,...
+    'VariableNames',{'lane','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
+end
+
+function row=summaryRow(label,result,cfg)
+errors=sum(result.errCnt); measured=sum(result.nMeasured); ber=errors/max(measured,1);
+row=table(string(label),errors,measured,ber,cfg.link.seed,max(ber,3/max(measured,1)),...
+    'VariableNames',{'variant','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
 end
 
 function [probes,manifest]=collectProbes(p,cfg)
