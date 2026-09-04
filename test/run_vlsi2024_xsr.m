@@ -19,16 +19,27 @@ switch mode
             'resultRoot',resultRoot,'probes',probeManifest);
     case 'loss_sweep'
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
-        rows=zeros(numel(cfg.channel.lossSweep_dB),3);
+        rows=zeros(numel(cfg.channel.lossSweep_dB),3); ilRows=zeros(numel(cfg.channel.lossSweep_dB),6);
         for k=1:numel(cfg.channel.lossSweep_dB)
             loss=cfg.channel.lossSweep_dB(k); cfgk=cfg;
             cfgk.channel.lossAtRef_dB=loss; cfgk.channel.lossNyq_dB=loss;
-            rk=runModel(cfgk); rows(k,:)=[loss rk.result.aggregateBer sum(rk.result.nMeasured)];
+            rk=runModel(cfgk); measured=verifyChannel(cfg.link.sps,loss,cfg.channel.poles,struct(...
+                'mode','analytic_il','refFreq_GHz',cfg.channel.refFreq_GHz,'baud_GBd',cfg.link.baud_GBd,...
+                'lossAtRef_dB',loss,'poles',cfg.channel.poles));
+            rows(k,:)=[loss rk.result.aggregateBer sum(rk.result.nMeasured)];
+            ilRows(k,:)=[loss measured cfg.channel.refFreq_GHz cfg.link.baud_GBd measured-loss 0.03];
         end
         metrics=array2table(rows,'VariableNames',{'lossAtRef_dB','aggregateBer','measured_bits'});
         writetable(metrics,fullfile(resultRoot,'loss_sweep_metrics.csv'));
+        il=array2table(ilRows,'VariableNames',{'requested_loss_dB','measured_loss_dB','referenceFrequency_GHz',...
+            'baud_GBd','error_dB','tolerance_dB'});
+        il.mode=repmat("analytic_il",height(il),1); il.unmodeledCrosstalk=repmat("true",height(il),1);
+        writetable(il,fullfile(resultRoot,'channel_il_at_28GHz.csv'));
+        response=il(:,{'referenceFrequency_GHz','baud_GBd','requested_loss_dB','measured_loss_dB','error_dB','tolerance_dB','mode','unmodeledCrosstalk'});
+        response.Properties.VariableNames={'frequency_GHz','baud_GBd','requested_loss_dB','measured_loss_dB','error_dB','tolerance_dB','mode','unmodeledCrosstalk'};
+        writetable(response,fullfile(resultRoot,'channel_response.csv'));
         writeJson(cfg,fullfile(resultRoot,'config.json'));
-        out=struct('mode',mode,'cfg',cfg,'metrics',metrics,'resultRoot',resultRoot);
+        out=struct('mode',mode,'cfg',cfg,'metrics',metrics,'channelIL',il,'resultRoot',resultRoot);
     otherwise
         error('run_vlsi2024_xsr:Mode','Unsupported mode: %s',mode);
 end

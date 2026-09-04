@@ -54,7 +54,7 @@ switch profile
         cfg.txPma.lane.enableDacQuantization=true; cfg.txPma.lane.dacLevels=206;
         cfg.txPma.lane.targetSwing=1; cfg.txPma.lane.gainError=0;
         cfg.txPma.lane.enableSwingCalibration=true;
-        cfg.channel.mode='legacy_nyquist'; cfg.channel.refFreq_GHz=28;
+        cfg.channel.mode='analytic_il'; cfg.channel.refFreq_GHz=28; cfg.channel.baud_GBd=56.25;
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
         cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
         cfg.model.useReferenceAlign=false; cfg.model.enablePaperAdaptation=false;
