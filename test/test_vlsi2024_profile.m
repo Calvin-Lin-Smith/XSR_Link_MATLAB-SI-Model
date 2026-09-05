@@ -35,6 +35,12 @@ assert(ideal.link.snr_dB==inf && ideal.link.rjUI_rms==0 && ideal.channel.lossNyq
 assert(strcmp(a.mode,'baseline') && strcmp(a.resultRoot,fullfile(root,'results','vlsi2024_xsr')));
 assert(cfgA.link.nBits==256 && cfgA.phy.nLane==8);
 assert(numel(a.result.errCnt)==8 && all(isfinite(a.metrics.empirical_BER)));
+assert(isfield(cfgA.model,'appliedFfe') && isfield(cfgA.model,'appliedDac'));
+assert(isfield(a.probes,'dataSamples') && isfield(a.probes,'edgeSamples') && isfield(a.probes,'spareSamples'));
+assert(isfield(a.probes,'levelShiftCodes') && isfield(a.probes,'comparatorThresholds'));
+assert(isfield(a.probes,'levelShiftedSamples') && isfield(a.probes,'quarterRateSamples'));
+load(fullfile(a.resultRoot,'baseline_probes.mat'),'probes');
+assert(isfield(probes,'dataSamples') && isfield(probes,'edgeSamples') && isfield(probes,'spareSamples'));
 assert(all(a.metrics.measured_bits>0) && all(isfinite(a.metrics.errors)));
 required={"config.json","assumptions.md","baseline_metrics.csv","baseline_probes.mat"};
 for k=1:numel(required), assert(isfile(fullfile(a.resultRoot,required{k}))); end

@@ -14,8 +14,8 @@ expected=zeros(7,1); expected(2)=1; expected(4)=2; expected(5)=3; expected(7)=4;
 assert(isequal(h,expected)); assert(numel(mh.impulseResponse)>0 && isequal(mh.pulseResponse,mh.impulseResponse));
 
 [y,~]=dspFfeVector(x,[1 -2 0.5],[-3 0 2],struct('normalize',false));
-want=[x(1:3);0;0;0;0]; want(1:4)=want(1:4)+[0;0;0;0]; %#ok<NASGU>
-assert(numel(y)==numel(x) && all(isfinite(y)));
+want=[2;1;0.5;0;-8.5;-10;-11.5];
+assert(isequal(y,want));
 
 mustFail(@() dspFfeVector(x,[1 2],[0 0],struct()));
 mustFail(@() dspFfeVector(x,[1 2],[-1 1],struct()));

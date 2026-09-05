@@ -18,7 +18,7 @@ switch mode
         [probes,probeManifest]=collectProbes(r.model,cfg); %#ok<ASGLU>
         save(fullfile(resultRoot,'baseline_probes.mat'),'probes','probeManifest','-v7');
         out=struct('mode',mode,'cfg',cfg,'result',r.result,'metrics',metrics,...
-            'resultRoot',resultRoot,'probes',probeManifest);
+            'resultRoot',resultRoot,'probes',probes,'probeManifest',probeManifest);
     case 'loss_sweep'
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
         rows=zeros(numel(cfg.channel.lossSweep_dB),3); ilRows=zeros(numel(cfg.channel.lossSweep_dB),6);
@@ -28,6 +28,7 @@ switch mode
             rk=runModel(cfgk); measured=verifyChannel(cfg.link.sps,loss,cfg.channel.poles,struct(...
                 'mode','analytic_il','refFreq_GHz',cfg.channel.refFreq_GHz,'baud_GBd',cfg.link.baud_GBd,...
                 'lossAtRef_dB',loss,'poles',cfg.channel.poles));
+            if k==1, cfg=attachApplied(cfg,rk.model); end
             rows(k,:)=[loss rk.result.aggregateBer sum(rk.result.nMeasured)];
             ilRows(k,:)=[loss measured cfg.channel.refFreq_GHz cfg.link.baud_GBd measured-loss 0.03];
         end
@@ -48,24 +49,35 @@ switch mode
         cfg3=cfg; cfg3.txPma.lane.ffeMode='three_tap'; r3=runModel(cfg3);
         cfg6=cfg; cfg6.txPma.lane.ffeMode='six_tap'; cfg6.txPma.lane.ffeOffsets=cfg.txPma.lane.sixTapPreset.offsets;
         cfg6.txPma.lane.ffeCoeffs=cfg.txPma.lane.sixTapPreset.coeffs; r6=runModel(cfg6);
-        ffe=array2table([3 sum(r3.result.errCnt) sum(r3.result.nMeasured) sum(r3.result.errCnt)/max(sum(r3.result.nMeasured),1) cfg.link.seed; ...
-            6 sum(r6.result.errCnt) sum(r6.result.nMeasured) sum(r6.result.errCnt)/max(sum(r6.result.nMeasured),1) cfg.link.seed],...
-            'VariableNames',{'tap_count','errors','measured_bits','empirical_BER','seed'});
-        ffe.coefficients=[string(mat2str(cfg3.txPma.lane.ffeCoeffs));string(mat2str(cfg6.txPma.lane.ffeCoeffs))];
+        cfg.model.appliedFfe=base.cfg.model.appliedFfe; cfg.model.appliedDac=base.cfg.model.appliedDac;
+        cfg.model.appliedFfeThreeTap=r3.model.txPma.lane(1).ffe.tapMeta;
+        cfg.model.appliedFfeSixTap=r6.model.txPma.lane(1).ffe.tapMeta;
+        ffe=[metricVariant('three_tap',r3.result,cfg); metricVariant('six_tap',r6.result,cfg)];
+        ffe.tap_count=[3;6]; ffe.coefficients=[string(mat2str(r3.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients));...
+            string(mat2str(r6.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients))];
+        ffe=movevars(ffe,{'tap_count','coefficients'},'Before',1);
         writetable(ffe,fullfile(resultRoot,'ffe_3_vs_6.csv'));
         cfgOff=cfg; cfgOff.rxPma.lane.enableAcPre=false; cfgOff.rxPma.lane.enableAcPost=false; roff=runModel(cfgOff);
         cfgOn=cfg; ron=runModel(cfgOn);
-        ac=array2table([0 cfgOff.rxPma.lane.ctleBoost_dB cfgOff.rxPma.lane.ctleBoost_dB mean(roff.model.rxPma.lane(1).afe.acPostOut(end/2:end)) cfg.link.seed; ...
-            1 cfgOn.rxPma.lane.ctleBoost_dB cfgOn.rxPma.lane.ctleBoost_dB mean(ron.model.rxPma.lane(1).afe.acPostOut(end/2:end)) cfg.link.seed],...
-            'VariableNames',{'ac_enabled','ctle_requested_dB','ctle_applied_dB','long_run_offset','seed'});
-        grid=cfg.rxPma.lane.ctleGrid_dB(:);
-        ac=[ac; array2table([nan(numel(grid),1) grid grid nan(numel(grid),1) repmat(cfg.link.seed,numel(grid),1)],...
-            'VariableNames',ac.Properties.VariableNames)];
+        grid=cfg.rxPma.lane.ctleGrid_dB(:); acRows=zeros(2+numel(grid),9);
+        acRows(1,:)=acResultRow(0,cfgOff.rxPma.lane.ctleBoost_dB,roff,cfg);
+        acRows(2,:)=acResultRow(1,cfgOn.rxPma.lane.ctleBoost_dB,ron,cfg);
+        for k=1:numel(grid)
+            cfgGrid=cfg; cfgGrid.rxPma.lane.ctleBoost_dB=grid(k); rg=runModel(cfgGrid);
+            applied=rg.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+            assert(abs(applied-grid(k))<1e-12 && applied>=0 && applied<=6,'CTLE grid application failed.');
+            acRows(k+2,:)=acResultRow(1,grid(k),rg,cfg,applied);
+        end
+        assert(abs(acRows(1,4)-acRows(2,4))>1e-6,'AC on/off response did not change.');
+        assert(all(acRows(3:end,3)>=0 & acRows(3:end,3)<=6));
+        ac=array2table(acRows,'VariableNames',{'ac_enabled','ctle_requested_dB','ctle_applied_dB',...
+            'long_run_offset','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
         writetable(ac,fullfile(resultRoot,'ac_ctle.csv'));
         summary=[summaryRow('baseline',base.result,cfg); summaryRow('ffe_3tap',r3.result,cfg); ...
             summaryRow('ffe_6tap',r6.result,cfg); summaryRow('ac_off',roff.result,cfg); summaryRow('ac_on',ron.result,cfg)];
         writetable(summary,fullfile(resultRoot,'static_regression_summary.csv'));
         fid=fopen(fullfile(resultRoot,'assumptions.md'),'a'); fprintf(fid,'\n- Static A-D checkpoint retains legacy oracle/reference-bit alignment; it is not the paper BB-CDR result.\n'); fclose(fid);
+        writeJson(cfg,fullfile(resultRoot,'config.json'));
         out=struct('mode',mode,'cfg',cfg,'baseline',base,'loss',loss,'ffe',ffe,'acCtle',ac,...
             'summary',summary,'resultRoot',resultRoot);
     otherwise
@@ -96,29 +108,68 @@ end
 
 function metrics=metricTable(r,cfg)
 lanes=(1:numel(r.result.errCnt))'; n=numel(lanes);
-upper=zeros(n,1); for k=1:n, upper(k)=max(r.result.ber(k),3/max(r.result.nMeasured(k),1)); end
+upper=zeros(n,1); for k=1:n, upper(k)=binomialUpper95(r.result.errCnt(k),r.result.nMeasured(k)); end
 metrics=table(lanes,r.result.errCnt(:),r.result.nMeasured(:),r.result.ber(:),repmat(cfg.link.seed,n,1),upper,...
     'VariableNames',{'lane','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
 end
 
 function row=summaryRow(label,result,cfg)
 errors=sum(result.errCnt); measured=sum(result.nMeasured); ber=errors/max(measured,1);
-row=table(string(label),errors,measured,ber,cfg.link.seed,max(ber,3/max(measured,1)),...
+row=table(string(label),errors,measured,ber,cfg.link.seed,binomialUpper95(errors,measured),...
     'VariableNames',{'variant','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
+end
+
+function row=metricVariant(label,result,cfg)
+errors=sum(result.errCnt); measured=sum(result.nMeasured); ber=errors/max(measured,1);
+row=table(string(label),errors,measured,ber,cfg.link.seed,binomialUpper95(errors,measured),...
+    'VariableNames',{'variant','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
+end
+
+function row=acResultRow(enabled,requested,r,cfg,applied)
+if nargin<5, applied=r.model.rxPma.lane(1).afe.ctle.appliedBoost_dB; end
+errors=sum(r.result.errCnt); measured=sum(r.result.nMeasured); ber=errors/max(measured,1);
+offset=mean(r.model.rxPma.lane(1).afe.acPostOut(end/2:end));
+row=[enabled requested applied offset errors measured ber cfg.link.seed binomialUpper95(errors,measured)];
+end
+
+function cfg=attachApplied(cfg,p)
+cfg.model.appliedFfe=p.txPma.lane(1).ffe.tapMeta;
+cfg.model.appliedDac=p.txPma.lane(1).driver.dacMeta;
+end
+
+function upper=binomialUpper95(errors,measured)
+if measured<=0, upper=NaN;
+elseif errors<=0, upper=3/measured;
+elseif errors>=measured, upper=1;
+else, upper=betaincinv(0.95,errors+1,measured-errors);
+end
 end
 
 function [probes,manifest]=collectProbes(p,cfg)
 limit=min(4096,cfg.link.nBits*cfg.link.sps);
+lane=p.rxPma.lane(1); slicer=lane.slicer;
 probes=struct();
-probes.txPad=p.txPma.lane(1).driver.txPad(1:min(limit,end));
-probes.channelOut=p.channel(1).out(1:min(limit,end));
-probes.ctleOut=p.rxPma.lane(1).afe.ctleOut(1:min(limit,end));
-probes.slicerIn=p.rxPma.lane(1).slicer.in(1:min(limit,end));
-probes.rxBits=p.rxPma.lane(1).deserializer.rxBits;
+probes.txPad=takeProbe(p.txPma.lane(1).driver.txPad,limit);
+probes.channelOut=takeProbe(p.channel(1).out,limit);
+probes.ctleOut=takeProbe(lane.afe.ctleOut,limit);
+probes.slicerIn=takeProbe(slicer.in,limit);
+probes.rxBits=lane.deserializer.rxBits;
+probes.dataSamples=takeProbe(slicer.dataSamples,limit); probes.dataDecisions=slicer.dataDecisions;
+probes.edgeSamples=takeProbe(slicer.edgeSamples,limit); probes.edgeDetectorOutput=slicer.edgeDetectorOutput;
+probes.spareSamples=takeProbe(slicer.spareSamples,limit); probes.spareMonitorOutput=slicer.spareMonitorOutput;
+probes.levelShiftedSamples=takeProbe(slicer.levelShiftedSamples,limit);
+probes.quarterRateSamples=cellfun(@(v)takeProbe(v,limit),slicer.quarterRateSamples,'UniformOutput',false);
+probes.levelShiftCodes=slicer.levelShiftCodes; probes.comparatorThresholds=slicer.comparatorThresholds;
+probes.samplerRoleCounts=slicer.samplerRoleCounts;
 manifest=struct('nLane',p.nLane,'nBits',cfg.link.nBits,'sampleLimit',limit,...
     'txPad',size(p.txPma.lane(1).driver.txPad),'channelOut',size(p.channel(1).out),...
-    'ctleOut',size(p.rxPma.lane(1).afe.ctleOut),'slicerIn',size(p.rxPma.lane(1).slicer.in),...
-    'rxBits',size(p.rxPma.lane(1).deserializer.rxBits));
+    'ctleOut',size(lane.afe.ctleOut),'slicerIn',size(slicer.in),'dataSamples',size(slicer.dataSamples),...
+    'edgeSamples',size(slicer.edgeSamples),'spareSamples',size(slicer.spareSamples),...
+    'levelShiftedSamples',size(slicer.levelShiftedSamples),'rxBits',size(lane.deserializer.rxBits));
+end
+
+function y=takeProbe(x,limit)
+if isempty(x), y=x; else, y=x(1:min(limit,numel(x))); end
 end
 
 function writeJson(value,path)

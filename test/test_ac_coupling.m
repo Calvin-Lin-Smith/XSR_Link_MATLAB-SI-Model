@@ -9,6 +9,7 @@ assert(isequal(off,x));
 assert(isequal(size(dspAcCouple(x,16,0.01,'zero')),size(x)));
 mustFail(@() dspAcCouple(x,16,0.5,'zero'));
 mustFail(@() dspAcCouple(x,16,-0.01,'zero'));
+mustFail(@() dspAcCouple(x,16,0.5,struct('enabled',false,'initialState','zero')));
 disp('AC coupling tests OK');
 end
 

@@ -86,7 +86,7 @@ switch profile
         cfg.paper.facts.pllTxIntegratedJitterContext='PLL+TX integrated; filter/measurement context';
         cfg.paper.facts.table1LossAtRef_dB=10.8;
         cfg.paper.facts.table1Loss_dB=10.8; cfg.paper.facts.table1_IL_dB=10.8;
-        cfg.paper.assumptions.channelModel='legacy Nyquist-normalized bootstrap until Stage C';
+        cfg.paper.assumptions.channelModel='calibrated analytic_il at 28 GHz; no real S-parameters';
         cfg.paper.assumptions.quotedEnergyScope='quoted only; not a model prediction';
         cfg.paper.assumptions.crosstalk='NEXT/FEXT facts recorded; MIMO crosstalk unmodeled';
     otherwise

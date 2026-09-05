@@ -12,6 +12,9 @@ assert(isequal(s.comparatorThresholds,[-2 0 2]));
 assert(~isempty(s.dataSamples) && ~isempty(s.dataDecisions));
 assert(~isempty(s.edgeSamples) && ~isempty(s.edgeDetectorOutput));
 assert(~isempty(s.spareSamples) && ~isempty(s.spareMonitorOutput));
+assert(~isempty(s.levelShiftedSamples) && any(any(s.levelShiftedSamples~=repmat(s.dataSamples,1,3))));
 assert(isequal(bits,dspSlice(s.dataSamples,'PAM4')));
+sc=s.cfg; sc.samplerRoles.levelShiftCodes.data=[2 1 -2]; s.configure(sc); s.run(x);
+assert(any(s.dataDecisionInput~=s.dataSamples));
 disp('Sampler threshold tests OK');
 end
