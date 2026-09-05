@@ -70,6 +70,11 @@ switch profile
             'thresholdAssumptions',[-2 0 2],...
             'offsetCalibrationPlaceholder','not implemented in Stage D');
         cfg.model.useReferenceAlign=false; cfg.model.enablePaperAdaptation=false;
+        cfg.model.trainingMode='decision_directed';
+        cfg.model.cdrOptions=struct('nCodes',64,'initialPhaseUI',0.9375,'targetPhaseUI',0.9375,'loopGainCodes',1,...
+            'loopBandwidthProxy',1/64,'updateCadence',1,'lockWindow',32,'lockToleranceUI',0.08,...
+            'mismatchBoundLSB',0.49,'mismatchSeed',202409,...
+            'enabled',true,'maxStepCodes',2);
         cfg.model.resultRoot='results/vlsi2024_xsr';
         cfg.paper.facts.packageTopology='2D/2.5D CoWoS';
         cfg.paper.facts.channelLength_mm=[1 80];
@@ -83,6 +88,7 @@ switch profile
         cfg.paper.facts.piInlDnl='< +/-0.5 LSB';
         cfg.paper.facts.piInlDnl_LSB='< +/-0.5 LSB';
         cfg.paper.facts.pllTxIntegratedJitter_fs=194;
+        cfg.paper.facts.pllTxIntegratedJitter_UI=194e-15/(1/(cfg.link.baud_GBd*1e9));
         cfg.paper.facts.pllTxIntegratedJitterContext='PLL+TX integrated; filter/measurement context';
         cfg.paper.facts.table1LossAtRef_dB=10.8;
         cfg.paper.facts.table1Loss_dB=10.8; cfg.paper.facts.table1_IL_dB=10.8;

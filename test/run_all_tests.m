@@ -1,7 +1,8 @@
-function summary = run_all_tests()
+function summary = run_all_tests(varargin)
 %RUN_ALL_TESTS Execute T1-T9 and write reproducible result artifacts.
 root=fileparts(fileparts(mfilename('fullpath'))); addpath(genpath(fullfile(root,'src')),fullfile(root,'test'));
-outDir=fullfile(root,'results'); if ~exist(outDir,'dir'), mkdir(outDir); end
+if nargin==0, outDir=fullfile(root,'results'); else, outDir=char(varargin{1}); end
+if ~exist(outDir,'dir'), mkdir(outDir); end
 names="T"+(1:9)'; passed=false(9,1); detail=strings(9,1);
 
 % T1: eye metrics over rate/modulation/loss matrix.

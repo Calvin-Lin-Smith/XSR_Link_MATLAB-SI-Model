@@ -30,15 +30,17 @@ classdef Driver < Blk
             x=x(:); y=obj.amplitude*x;
             if obj.enableDacQuantization
                 y=y*(1+obj.gainError);
+                peakBeforeClip=max(abs(y)); clippedSamples=sum(abs(y)>obj.targetSwing);
                 if obj.enableSwingCalibration
-                    peak=max(abs(y)); if peak>0, y=y*(obj.targetSwing/peak); end
+                    peak=peakBeforeClip; if peak>0, y=y*(obj.targetSwing/peak); end
                 end
                 y=max(min(y,obj.targetSwing),-obj.targetSwing);
                 step=2*obj.targetSwing/(obj.dacLevels-1);
                 y=round((y+obj.targetSwing)/step)*step-obj.targetSwing;
                 obj.dacMeta=struct('enabled',true,'appliedLevels',obj.dacLevels,...
                     'targetSwing',obj.targetSwing,'gainError',obj.gainError,...
-                    'swingCalibrated',obj.enableSwingCalibration,'step',step);
+                    'swingCalibrated',obj.enableSwingCalibration,'step',step,...
+                    'peakBeforeClip',peakBeforeClip,'clippedSamples',clippedSamples);
                 obj.log.quantization=obj.dacMeta;
             else
                 obj.dacMeta=struct('enabled',false,'appliedLevels',0);

@@ -18,7 +18,8 @@ classdef D2DPHY < Blk
         end
         function configure(obj,cfg)
             configure@Blk(obj,cfg); obj.link=cfg.link; obj.rawPcs.configure(cfg.rawPcs,cfg.link);
-            obj.txPma.configure(cfg.txPma,cfg.link); obj.rxPma.configure(cfg.rxPma,cfg.link);
+            obj.txPma.configure(cfg.txPma,cfg.link);
+            if isfield(cfg,'model'), obj.rxPma.configure(cfg.rxPma,cfg.link,cfg.model); else, obj.rxPma.configure(cfg.rxPma,cfg.link); end
             cc=cfg.channel; cc.sps=cfg.link.sps;
             for j=1:obj.nLane, obj.channel(j).configure(cc); end
         end
