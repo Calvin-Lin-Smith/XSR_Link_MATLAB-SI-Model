@@ -1,0 +1,6 @@
+stage,pass,detail
+baseline_cdr_pi,1,formal decision-directed CDR/PI
+static_link,1,legacy static link and FFE/CTLE sweep
+adaptation,1,bounded calibration/adaptation
+legacy_t1_t9,1,fresh T1-T9
+artifact_schema,1,reopen and required labels

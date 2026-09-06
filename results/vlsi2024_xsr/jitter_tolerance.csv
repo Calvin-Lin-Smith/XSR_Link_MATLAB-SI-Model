@@ -1,0 +1,7 @@
+jitter_UI_rms,errors,measured_bits,empirical_BER,seed,ber_upper_95,sample_bits,sweep_context,mode,rate_context_Gbps,lane_context
+0,41008,130560,0.314093137254902,202409,0.316212927647809,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8
+0.005,41012,130560,0.314123774509804,202409,0.316243620254133,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8
+0.01,41054,130560,0.314445465686275,202409,0.316565891977419,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8
+0.02,41046,130560,0.314384191176471,202409,0.316504506978039,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8
+0.04,41084,130560,0.314675245098039,202409,0.316796085345064,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8
+0.08,41420,130560,0.317248774509804,202409,0.319374210154381,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,x8

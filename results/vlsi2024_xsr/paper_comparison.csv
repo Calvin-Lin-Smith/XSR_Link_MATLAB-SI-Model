@@ -1,0 +1,23 @@
+category,item,paper_value,model_value,status,scope
+paper fact,lanes and PLL,"8 lanes + PLL",cfg.phy.nLane=8; RxSupport PLL,recorded,source fact retained; not inferred from model
+paper fact,rate/modulation range,"9.8-113 Gb/s PAM4/NRZ",cfg rate contexts 112.5/112/113,recorded,source fact retained; not inferred from model
+paper fact,TX FFE,"3/optional 6 taps",three-tap formal + six-tap comparison,recorded,source fact retained; not inferred from model
+paper fact,SST DAC,"7.5-bit/206-level SST DAC",cfg.txPma.lane.dacLevels=206,recorded,source fact retained; not inferred from model
+paper fact,package/channel length,"1-80 mm 2D/2.5D CoWoS",metadata only; analytic channel,recorded,source fact retained; not inferred from model
+paper fact,insertion loss,"text 0.5-10 dB; Table-1 10.8 dB IL at 28 GHz",8 dB model point; 10.8 dB fact retained,recorded,source fact retained; not inferred from model
+paper fact,NEXT/FEXT,"-40/-38 dB at 28 GHz",metadata only,recorded,source fact retained; not inferred from model
+paper fact,AC leveling,"AC leveling",enabled in AFE,recorded,source fact retained; not inferred from model
+paper fact,CTLE,"single-stage max 6 dB, max 0.2 dB step",grid 0:0.2:6 dB,recorded,source fact retained; not inferred from model
+paper fact,sampler roles,"12 data, 4 edge, 4 spare",Slicer role metadata,recorded,source fact retained; not inferred from model
+paper fact,DLL/PI/BB-CDR,"2 DLL + PI/BB-CDR",decision-directed 64-code PI,recorded,source fact retained; not inferred from model
+paper fact,PI mismatch,"< +/-0.5 LSB",deterministic bound 0.49 LSB,recorded,source fact retained; not inferred from model
+paper fact,pattern,"PRBS31",cfg.rawPcs.pattern,recorded,source fact retained; not inferred from model
+paper fact,integrated jitter,"194 fs PLL+TX integrated, filtered/measurement context",metadata only,recorded,source fact retained; not inferred from model
+paper fact,COM,"2.5 dB COM at 1e-6",not estimated,recorded,source fact retained; not inferred from model
+model output,baseline empirical BER,"paper BER claims",aggregate BER 0.296069 over 2096640 bits,measured behavioral output,finite empirical result with 95% upper bounds
+model assumption,channel,"not selected",calibrated analytic IL at 28 GHz,selected assumption,architecture/trend reproduction
+model limitation,S-parameters/reflections,"not modeled",absent,explicit limitation,outside milestone scope
+model limitation,MIMO crosstalk,"not modeled",absent,explicit limitation,outside milestone scope
+model limitation,transistor/T-coil,"not modeled",absent,explicit limitation,outside milestone scope
+model limitation,exact FFE coefficients,"model-selected only",preset coefficients,explicit limitation,outside milestone scope
+model limitation,power/area/silicon calibration,"not modeled/quoted facts only",absent,explicit limitation,outside milestone scope

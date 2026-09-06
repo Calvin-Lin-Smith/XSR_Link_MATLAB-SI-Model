@@ -1,0 +1,292 @@
+{
+  "link": {
+    "modulation": "PAM4",
+    "baud_Gbps": 56.25,
+    "sps": 16,
+    "nBits": 262144,
+    "skipUI": 32,
+    "snr_dB": 28,
+    "rjUI_rms": 0.005,
+    "djUI_pp": 0.02,
+    "djFreq": 0.001,
+    "cdrBw": 0.1,
+    "seed": 202409,
+    "lineRate_Gbps": 112.5,
+    "baud_GBd": 56.25
+  },
+  "rawPcs": {
+    "pattern": "PRBS31",
+    "errInject": 0
+  },
+  "txPma": {
+    "lane": {
+      "txEqMain": 0.98,
+      "txEqPre": 0.01,
+      "txEqPost": 0.01,
+      "ffeNormalize": true,
+      "amplitude": 1,
+      "ffeMode": "three_tap",
+      "ffeOffsets": [
+        -1,
+        0,
+        1
+      ],
+      "ffeCoeffs": [
+        -0.01,
+        0.98,
+        -0.01
+      ],
+      "ffeCurrentConstraint": 1,
+      "ffe": {
+        "mode": "three_tap",
+        "offsets": [
+          -1,
+          0,
+          1
+        ],
+        "coeffs": [
+          -0.01,
+          0.98,
+          -0.01
+        ],
+        "normalize": true,
+        "currentConstraint": 1
+      },
+      "sixTapPreset": {
+        "offsets": [
+          -2,
+          -1,
+          0,
+          1,
+          2,
+          3
+        ],
+        "coeffs": [
+          -0.03,
+          -0.05,
+          0.88,
+          -0.06,
+          -0.04,
+          -0.02
+        ],
+        "description": "model-selected regression assumption; not paper-disclosed coefficients"
+      },
+      "enableDacQuantization": true,
+      "dacLevels": 206,
+      "targetSwing": 1,
+      "gainError": 0,
+      "enableSwingCalibration": true
+    }
+  },
+  "rxPma": {
+    "lane": {
+      "ctleBoost_dB": 4,
+      "ctleFz": 0.25,
+      "termGain": 1,
+      "clockMode": "forwarded",
+      "terminationMode": "AC",
+      "enableAcPre": true,
+      "enableAcPost": true,
+      "acPreCorner_UI": 0.01,
+      "acPostCorner_UI": 0.01,
+      "acInitialState": "steady_state",
+      "enableAgc": false,
+      "ctlePolicy": "paper_grid",
+      "ctleGrid_dB": [
+        0,
+        0.2,
+        0.4,
+        0.60000000000000009,
+        0.8,
+        1,
+        1.2000000000000002,
+        1.4000000000000001,
+        1.6,
+        1.8,
+        2,
+        2.2,
+        2.4000000000000004,
+        2.6,
+        2.8000000000000003,
+        3,
+        3.1999999999999997,
+        3.4,
+        3.5999999999999996,
+        3.8,
+        4,
+        4.2,
+        4.4,
+        4.6,
+        4.8,
+        5,
+        5.2,
+        5.4,
+        5.6,
+        5.8,
+        6
+      ],
+      "ctleAppliedBoost_dB": 4,
+      "samplerRoles": {
+        "enabled": true,
+        "quarterRateBranches": 4,
+        "roleCounts": {
+          "data": 12,
+          "edge": 4,
+          "spare": 4,
+          "total": 20
+        },
+        "levelShiftCodes": {
+          "data": [
+            2,
+            0,
+            -2
+          ],
+          "edge": 0,
+          "spare": [
+            3,
+            1,
+            -1,
+            -3
+          ]
+        },
+        "thresholdAssumptions": [
+          -2,
+          0,
+          2
+        ],
+        "offsetCalibrationPlaceholder": "not implemented in Stage D"
+      }
+    }
+  },
+  "channel": {
+    "lossNyq_dB": 8,
+    "poles": 3,
+    "mode": "analytic_il",
+    "refFreq_GHz": 28,
+    "baud_GBd": 56.25,
+    "lossAtRef_dB": 8,
+    "lossSweep_dB": [
+      0.5,
+      2,
+      4,
+      6,
+      8,
+      10
+    ]
+  },
+  "paper": {
+    "id": "VLSI2024_XSR_3nm",
+    "mode": "link_behavioral",
+    "rateRange_Gbps": [
+      9.8,
+      113
+    ],
+    "txEyeRate_Gbps": 112.5,
+    "berRate_Gbps": 112,
+    "headlineRate_Gbps": 113,
+    "rateContext": {
+      "range_Gbps": [
+        9.8,
+        113
+      ],
+      "txEye_Gbps": 112.5,
+      "ber_Gbps": 112,
+      "headlineTable_Gbps": 113
+    },
+    "facts": {
+      "packageTopology": "2D/2.5D CoWoS",
+      "channelLength_mm": [
+        1,
+        80
+      ],
+      "nextAt28GHz_dB": -40,
+      "fextAt28GHz_dB": -38,
+      "next_dB": -40,
+      "fext_dB": -38,
+      "quotedEnergy_pJ_per_bit": 0.9,
+      "dacLevels": 206,
+      "energy_pJ_per_bit": 0.9,
+      "ctleMaxBoost_dB": 6,
+      "ctleMaxStep_dB": 0.2,
+      "samplerRoleCounts": {
+        "data": 12,
+        "edge": 4,
+        "spare": 4,
+        "total": 20
+      },
+      "dllCount": 2,
+      "piCount": 1,
+      "piInlDnl": "< +/-0.5 LSB",
+      "piInlDnl_LSB": "< +/-0.5 LSB",
+      "pllTxIntegratedJitter_fs": 194,
+      "pllTxIntegratedJitter_UI": 0.0109125,
+      "pllTxIntegratedJitterContext": "PLL+TX integrated; filter/measurement context",
+      "table1LossAtRef_dB": 10.8,
+      "table1Loss_dB": 10.8,
+      "table1_IL_dB": 10.8
+    },
+    "assumptions": {
+      "channelModel": "calibrated analytic_il at 28 GHz; no real S-parameters",
+      "quotedEnergyScope": "quoted only; not a model prediction",
+      "crosstalk": "NEXT/FEXT facts recorded; MIMO crosstalk unmodeled"
+    }
+  },
+  "phy": {
+    "nLane": 8
+  },
+  "model": {
+    "useReferenceAlign": false,
+    "enablePaperAdaptation": true,
+    "trainingMode": "decision_directed",
+    "cdrOptions": {
+      "nCodes": 64,
+      "initialPhaseUI": 0.9375,
+      "targetPhaseUI": 0.9375,
+      "loopGainCodes": 1,
+      "loopBandwidthProxy": 0.015625,
+      "updateCadence": 1,
+      "lockWindow": 32,
+      "lockToleranceUI": 0.08,
+      "mismatchBoundLSB": 0.49,
+      "mismatchSeed": 202409,
+      "enabled": true,
+      "maxStepCodes": 2
+    },
+    "resultRoot": "results/vlsi2024_xsr",
+    "adaptation": {
+      "states": [
+        "RESET",
+        "STARTUP_IMPEDANCE_CAL",
+        "CLOCK_CAL",
+        "INITIAL_EQ_TRAIN",
+        "MISSION_TRACK"
+      ],
+      "objective": "minimum adjacent decision-level margin",
+      "disturbance": "TX gain error + CTLE drift",
+      "initialError": {
+        "txGain": 0.08,
+        "ctle_dB": 0.8,
+        "dllPhaseUI": 0.03,
+        "dccDutyUI": 0.02,
+        "samplerOffsetUI": 0.04
+      },
+      "residualLimit": {
+        "txGain": 0.01,
+        "ctle_dB": 0.2,
+        "dllPhaseUI": 0.01,
+        "dccDutyUI": 0.01,
+        "samplerOffsetUI": 0.01
+      },
+      "finiteBerNotOptimizationTarget": true,
+      "selectedCtle_dB": 0,
+      "selectedFfe": [
+        -0.01,
+        0.98,
+        -0.01
+      ],
+      "selectedObjective": 0.9385781030823499
+    },
+    "adaptationSampleBits": 16384,
+    "staticSweepSampleBits": 16384
+  }
+}

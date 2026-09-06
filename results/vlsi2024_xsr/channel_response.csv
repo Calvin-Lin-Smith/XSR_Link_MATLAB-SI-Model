@@ -1,0 +1,7 @@
+frequency_GHz,baud_GBd,requested_loss_dB,measured_loss_dB,error_dB,tolerance_dB,mode,unmodeledCrosstalk
+28,56.25,0.5,130560,130559.5,0.03,analytic_il,true
+28,56.25,2,130560,130558,0.03,analytic_il,true
+28,56.25,4,130560,130556,0.03,analytic_il,true
+28,56.25,6,130560,130554,0.03,analytic_il,true
+28,56.25,8,130560,130552,0.03,analytic_il,true
+28,56.25,10,130560,130550,0.03,analytic_il,true
