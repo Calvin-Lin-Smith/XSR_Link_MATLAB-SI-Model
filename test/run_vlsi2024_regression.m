@@ -4,7 +4,9 @@ if nargin<1 || isempty(mode), mode='full'; end
 mode=lower(char(mode)); if ~strcmp(mode,'full'), error('run_vlsi2024_regression:Mode','Only full mode is supported.'); end
 nBits=parseBits(varargin); root=fileparts(fileparts(mfilename('fullpath'))); resultRoot=fullfile(root,'results','vlsi2024_xsr'); ensureDir(resultRoot);
 tic;
-base=run_vlsi2024_xsr('baseline',nBits); static=run_vlsi2024_xsr('static_checkpoint',nBits); adapt=run_vlsi2024_xsr('adaptation',nBits);
+staticBits=min(nBits,2^14);
+base=run_vlsi2024_xsr('baseline',nBits); static=run_vlsi2024_xsr('static_checkpoint',staticBits); adapt=run_vlsi2024_xsr('adaptation',nBits);
+adapt.cfg.model.staticSweepSampleBits=staticBits; writeJson(adapt.cfg,fullfile(resultRoot,'config.json'));
 writeJitterTolerance(base.cfg,resultRoot,nBits);
 writePaperComparison(base,static,adapt,resultRoot);
 legacyRoot=fullfile(resultRoot,'legacy_t1_t9'); ensureDir(legacyRoot); legacy=run_all_tests(legacyRoot);
@@ -83,4 +85,8 @@ end
 
 function ensureDir(path)
 if ~exist(path,'dir'), mkdir(path); end
+end
+
+function writeJson(value,path)
+fid=fopen(path,'w'); assert(fid>0,'Unable to write %s.',path); fprintf(fid,'%s',jsonencode(value,'PrettyPrint',true)); fclose(fid);
 end
