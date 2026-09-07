@@ -5,7 +5,9 @@ mode=lower(char(mode)); if ~strcmp(mode,'full'), error('run_vlsi2024_regression:
 nBits=parseBits(varargin); root=fileparts(fileparts(mfilename('fullpath'))); resultRoot=fullfile(root,'results','vlsi2024_xsr'); ensureDir(resultRoot);
 tic;
 staticBits=min(nBits,2^14);
-base=run_vlsi2024_xsr('baseline',nBits); static=run_vlsi2024_xsr('static_checkpoint',staticBits); adapt=run_vlsi2024_xsr('adaptation',nBits);
+base=run_vlsi2024_xsr('baseline',nBits); static=run_vlsi2024_xsr('static_checkpoint',staticBits);
+% static_checkpoint reuses the runner and overwrites baseline artifacts; restore full evidence.
+base=run_vlsi2024_xsr('baseline',nBits); adapt=run_vlsi2024_xsr('adaptation',nBits);
 adapt.cfg.model.staticSweepSampleBits=staticBits; writeJson(adapt.cfg,fullfile(resultRoot,'config.json'));
 writeJitterTolerance(base.cfg,resultRoot,nBits);
 writePaperComparison(base,static,adapt,resultRoot);
