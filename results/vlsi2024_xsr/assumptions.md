@@ -10,5 +10,3 @@
 - The approximately 194 fs value is retained as PLL+TX integrated jitter with measurement/filter context, not TX-only jitter.
 - Calibration optimizes observable eye/decision margin, not finite BER.
 - No real S-parameters/reflections, MIMO crosstalk, transistor/T-coil circuits, silicon calibration logic, or power breakdown are modeled.
-
-- Static A-D checkpoint retains legacy oracle/reference-bit alignment; it is not the paper BB-CDR result.
