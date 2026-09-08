@@ -2,7 +2,7 @@ function [out,cfg] = run_vlsi2024_xsr(mode,varargin)
 %RUN_VLSI2024_XSR Execute the isolated paper-profile behavioral runner.
 if nargin<1 || isempty(mode), mode='baseline'; end
 mode=lower(char(mode));
-[nBits,nLane]=parseOptions(varargin);
+[nBits,nLane,adaptEnabled]=parseOptions(varargin);
 root=fileparts(fileparts(mfilename('fullpath')));
 if strcmp(mode,'debug_1lane'), nLane=1; end
 cfg=phyConfig('vlsi2024_xsr'); cfg.link.nBits=nBits; cfg.phy.nLane=nLane;
@@ -26,13 +26,13 @@ switch mode
         for k=1:numel(cfg.channel.lossSweep_dB)
             loss=cfg.channel.lossSweep_dB(k); cfgk=cfg;
             cfgk.channel.lossAtRef_dB=loss; cfgk.channel.lossNyq_dB=loss;
-            rk=runModel(cfgk); measured=verifyChannel(cfg.link.sps,loss,cfg.channel.poles,struct(...
+            rk=runModel(cfgk); measuredLoss=verifyChannel(cfg.link.sps,loss,cfg.channel.poles,struct(...
                 'mode','analytic_il','refFreq_GHz',cfg.channel.refFreq_GHz,'baud_GBd',cfg.link.baud_GBd,...
                 'lossAtRef_dB',loss,'poles',cfg.channel.poles));
             if k==1, cfg=attachApplied(cfg,rk.model); end
-            errors=sum(rk.result.errCnt); measured=sum(rk.result.nMeasured);
-            rows(k,:)=[loss errors measured errors/max(measured,1) cfg.link.seed binomialUpper95(errors,measured) cfg.paper.berRate_Gbps];
-            ilRows(k,:)=[loss measured cfg.channel.refFreq_GHz cfg.link.baud_GBd measured-loss 0.03];
+            errors=sum(rk.result.errCnt); measuredBits=sum(rk.result.nMeasured);
+            rows(k,:)=[loss errors measuredBits errors/max(measuredBits,1) cfg.link.seed binomialUpper95(errors,measuredBits) cfg.paper.berRate_Gbps];
+            ilRows(k,:)=[loss measuredLoss cfg.channel.refFreq_GHz cfg.link.baud_GBd measuredLoss-loss 0.03];
         end
         metrics=array2table(rows,'VariableNames',{'lossAtRef_dB','errors','measured_bits','empirical_BER','seed','ber_upper_95','rate_context_Gbps'});
         metrics.aggregateBer=metrics.empirical_BER;
@@ -49,7 +49,10 @@ switch mode
         out=struct('mode',mode,'cfg',cfg,'metrics',metrics,'channelIL',il,'resultRoot',resultRoot);
     case {'static_checkpoint','static','milestone'}
         base=run_vlsi2024_xsr('baseline',nBits); cfg=base.cfg; resultRoot=base.resultRoot;
-        loss=run_vlsi2024_xsr('loss_sweep',nBits); writetable(loss.channelIL,fullfile(resultRoot,'channel_il.csv'));
+        loss=run_vlsi2024_xsr('loss_sweep',nBits); channelIL=loss.channelIL;
+        channelIL.measured_bits=loss.metrics.measured_bits;
+        channelIL.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(channelIL),1);
+        writetable(channelIL,fullfile(resultRoot,'channel_il.csv'));
         cfg3=cfg; cfg3.txPma.lane.ffeMode='three_tap'; r3=runModel(cfg3);
         cfg6=cfg; cfg6.txPma.lane.ffeMode='six_tap'; cfg6.txPma.lane.ffeOffsets=cfg.txPma.lane.sixTapPreset.offsets;
         cfg6.txPma.lane.ffeCoeffs=cfg.txPma.lane.sixTapPreset.coeffs; r6=runModel(cfg6);
@@ -81,12 +84,13 @@ switch mode
         summary=[summaryRow('baseline',base.result,cfg); summaryRow('ffe_3tap',r3.result,cfg); ...
             summaryRow('ffe_6tap',r6.result,cfg); summaryRow('ac_off',roff.result,cfg); summaryRow('ac_on',ron.result,cfg)];
         writetable(summary,fullfile(resultRoot,'static_regression_summary.csv'));
-        fid=fopen(fullfile(resultRoot,'assumptions.md'),'a'); fprintf(fid,'\n- Static A-D checkpoint retains legacy oracle/reference-bit alignment; it is not the paper BB-CDR result.\n'); fclose(fid);
+        fid=fopen(fullfile(resultRoot,'assumptions.md'),'a'); fprintf(fid,'\n- Static A-D checkpoint uses the formal reference-free BB-CDR/PI path; legacy oracle alignment is exercised only by typical/ideal compatibility and fresh T1-T9.\n'); fclose(fid);
         writeJson(cfg,fullfile(resultRoot,'config.json'));
         out=struct('mode',mode,'cfg',cfg,'baseline',base,'loss',loss,'ffe',ffe,'acCtle',ac,...
             'summary',summary,'resultRoot',resultRoot);
     case 'adaptation'
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
+        cfg.model.enablePaperAdaptation=adaptEnabled;
         [cfg,stateTrace,ctleTrace]=runAdaptationFlow(cfg);
         writetable(stateTrace,fullfile(resultRoot,'adaptation_state_trace.csv'));
         writetable(ctleTrace,fullfile(resultRoot,'ctle_adaptation_trace.csv'));
@@ -97,21 +101,20 @@ switch mode
 end
 end
 
-function [nBits,nLane]=parseOptions(args)
-nBits=2^18; nLane=8;
+function [nBits,nLane,adaptEnabled]=parseOptions(args)
+nBits=2^18; nLane=8; adaptEnabled=true;
 if isempty(args), return; end
-if numel(args)==1 && isnumeric(args{1}), nBits=args{1};
-elseif mod(numel(args),2)==0
-    for k=1:2:numel(args)
-        switch lower(char(args{k}))
-            case 'nbits', nBits=args{k+1};
-            otherwise, error('run_vlsi2024_xsr:Option','Unsupported option: %s',char(args{k}));
-        end
+next=1; if isnumeric(args{1}), nBits=args{1}; next=2; end
+if mod(numel(args)-next+1,2)~=0, error('run_vlsi2024_xsr:Option','Use name/value options.'); end
+for k=next:2:numel(args)
+    switch lower(char(args{k}))
+        case 'nbits', nBits=args{k+1};
+        case 'enablepaperadaptation', adaptEnabled=logical(args{k+1});
+        otherwise, error('run_vlsi2024_xsr:Option','Unsupported option: %s',char(args{k}));
     end
-else
-    error('run_vlsi2024_xsr:Option','Use an integer bit-count override.');
 end
 validateattributes(nBits,{'numeric'},{'scalar','integer','positive'});
+if ~isscalar(adaptEnabled), error('run_vlsi2024_xsr:Option','enablePaperAdaptation must be scalar.'); end
 end
 
 function r=runModel(cfg)
@@ -120,28 +123,45 @@ end
 
 function [cfg,stateTrace,ctleTrace]=runAdaptationFlow(cfg)
 % One bounded, observable calibration flow; objective is eye margin, never BER.
-adaptBits=min(cfg.link.nBits,2^14); d=cfg; d.model.enablePaperAdaptation=true;
-d.link.nBits=adaptBits; d.txPma.lane.gainError=0.08; d.txPma.lane.enableSwingCalibration=false;
-d.rxPma.lane.ctleBoost_dB=4.8; d.model.adaptationSampleBits=adaptBits;
+adaptBits=min(cfg.link.nBits,2^14); enabled=logical(cfg.model.enablePaperAdaptation); d=cfg;
+d.link.nBits=adaptBits; d.model.adaptationSampleBits=adaptBits;
+d.txPma.lane.gainError=0.08; d.txPma.lane.enableSwingCalibration=false;
+d.rxPma.lane.termGain=0.92; d.rxPma.lane.ctleBoost_dB=4.8;
+d.txPma.lane.ffeMode='three_tap'; d.txPma.lane.ffeOffsets=[-1 0 1]; d.txPma.lane.ffeCoeffs=[-0.08 0.84 -0.08];
+d.channel.lossAtRef_dB=10.8; d.channel.lossNyq_dB=10.8;
 d.model.adaptation=struct('states',{{'RESET','STARTUP_IMPEDANCE_CAL','CLOCK_CAL','INITIAL_EQ_TRAIN','MISSION_TRACK'}},...
-    'objective','minimum adjacent decision-level margin','disturbance','TX gain error + CTLE drift',...
-    'initialError',struct('txGain',0.08,'ctle_dB',0.8,'dllPhaseUI',0.03,'dccDutyUI',0.02,'samplerOffsetUI',0.04),...
+    'enabled',enabled,'objective','minimum adjacent decision-level margin','disturbance','TX gain + RX term + channel loss + CTLE drift',...
+    'initialError',struct('txGain',0.08,'rxTermGain',0.08,'ctle_dB',0.8,'dllPhaseUI',0.03,'dccDutyUI',0.02,'samplerOffsetUI',0.04),...
     'residualLimit',struct('txGain',0.01,'ctle_dB',0.2,'dllPhaseUI',0.01,'dccDutyUI',0.01,'samplerOffsetUI',0.01),...
     'finiteBerNotOptimizationTarget',true);
 
-% RESET and STARTUP impedance/swing calibration.
-reset=defaultAdaptRow('RESET',d); startCfg=d; startCfg.txPma.lane.enableSwingCalibration=true;
-rStart=runModel(startCfg); startObj=adaptObjective(rStart.model); startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,0.08,0.01,0.03,0.02,0.04);
+% RESET, then run the disturbed link once so degradation is measured before correction.
+rDist=runModel(d); disturbedObj=adaptObjective(rDist.model); reset=defaultAdaptRow('RESET',d);
+if ~enabled
+    offRow=adaptRow('STARTUP_IMPEDANCE_CAL',disturbedObj,d,rDist,disturbedObj,disturbedObj,false,0.92);
+    offRows=repmat(offRow,4,1); offRows.state=["STARTUP_IMPEDANCE_CAL";"CLOCK_CAL";"INITIAL_EQ_TRAIN";"MISSION_TRACK"];
+    stateTrace=[reset; offRows];
+    ctleTrace=array2table([1 d.rxPma.lane.ctleBoost_dB d.rxPma.lane.ctleBoost_dB disturbedObj 0 0 sum(rDist.result.nMeasured) cfg.link.seed disturbedObj disturbedObj false],...
+        'VariableNames',{'step','requested_dB','applied_dB','objective','initial_ctle_error_dB','residual_ctle_error_dB',...
+        'measured_bits','seed','disturbed_objective','recovered_objective','control_changed'});
+    cfg.model.enablePaperAdaptation=false; cfg.model.adaptation=d.model.adaptation; cfg.model.adaptationSampleBits=adaptBits;
+    cfg.model.adaptation.selectedObjective=disturbedObj; return;
+end
+
+% STARTUP_IMPEDANCE_CAL: correct TX gain/swing and RX term gain in the running model.
+startCfg=d; startCfg.txPma.lane.gainError=0; startCfg.txPma.lane.enableSwingCalibration=true; startCfg.rxPma.lane.termGain=1;
+rStart=runModel(startCfg); startObj=adaptObjective(rStart.model);
+startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,disturbedObj,startObj,true,0.92);
 
 % CLOCK_CAL uses decision-directed CDR/PI traces from the same received waveform.
-rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_CAL',clockObj,startCfg,rClock,0.08,0.01,0.01,0.01,0.04);
+rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_CAL',clockObj,startCfg,rClock,disturbedObj,clockObj,true,0.92);
 
 % INITIAL_EQ_TRAIN: bounded CTLE grid, then a small signed-FFE candidate set.
-grid=d.rxPma.lane.ctleGrid_dB(:); ctleRows=zeros(numel(grid),9);
+grid=d.rxPma.lane.ctleGrid_dB(:); ctleRows=zeros(numel(grid),11);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
 for k=1:numel(grid)
     ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
-    ctleRows(k,:)=[k grid(k) rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB obj 0.8 abs(0.8-(grid(k)-d.rxPma.lane.ctleBoost_dB)) adaptBits cfg.link.seed 0];
+    ctleRows(k,:)=[k grid(k) rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB obj 0.8 abs(0.8-(grid(k)-d.rxPma.lane.ctleBoost_dB)) adaptBits cfg.link.seed disturbedObj obj true];
     if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
@@ -149,16 +169,17 @@ for k=1:numel(ffeCandidates)
     ck=bestCfg; ck.txPma.lane.ffeMode='three_tap'; ck.txPma.lane.ffeOffsets=[-1 0 1]; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
     rk=runModel(ck); obj=adaptObjective(rk.model); if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
-trainRow=adaptRow('INITIAL_EQ_TRAIN',bestObj,bestCfg,bestR,0.08,0.01,0.01,0.01,0.01);
+trainRow=adaptRow('INITIAL_EQ_TRAIN',bestObj,bestCfg,bestR,disturbedObj,bestObj,true,0.92);
 
-% MISSION_TRACK: deterministic CTLE drift and one bounded correction back to the trained setting.
-driftCfg=bestCfg; driftCfg.rxPma.lane.ctleBoost_dB=min(6,bestCfg.rxPma.lane.ctleBoost_dB+0.2); %#ok<NASGU>
+% MISSION_TRACK: apply a real CTLE drift, measure degradation, then restore the trained controls.
+driftCfg=bestCfg; driftCfg.rxPma.lane.ctleBoost_dB=min(6,bestCfg.rxPma.lane.ctleBoost_dB+0.8);
+rDrift=runModel(driftCfg); driftObj=adaptObjective(rDrift.model);
 rMission=runModel(bestCfg); missionObj=adaptObjective(rMission.model);
-missionRow=adaptRow('MISSION_TRACK',missionObj,bestCfg,rMission,0.08,0.01,0.005,0.005,0.005);
+missionRow=adaptRow('MISSION_TRACK',missionObj, bestCfg,rMission,driftObj,missionObj,true,0.92);
 stateTrace=[reset; startRow; clockRow; trainRow; missionRow];
 ctleTrace=array2table(ctleRows,'VariableNames',{'step','requested_dB','applied_dB','objective','initial_ctle_error_dB',...
-    'residual_ctle_error_dB','measured_bits','seed','recovered'});
-ctleTrace.recovered=ctleTrace.objective>=bestObj-1e-12;
+    'residual_ctle_error_dB','measured_bits','seed','disturbed_objective','recovered_objective','control_changed'});
+ctleTrace.recovered=ctleTrace.objective>=disturbedObj; ctleTrace.control_changed=repmat(true,height(ctleTrace),1);
 cfg.model.enablePaperAdaptation=true; cfg.model.adaptation=d.model.adaptation; cfg.model.adaptationSampleBits=adaptBits;
 cfg.model.adaptation.selectedCtle_dB=bestCfg.rxPma.lane.ctleBoost_dB;
 cfg.model.adaptation.selectedFfe=bestCfg.txPma.lane.ffeCoeffs;
@@ -166,26 +187,29 @@ cfg.model.adaptation.selectedObjective=bestObj;
 end
 
 function row=defaultAdaptRow(state,cfg)
-row=table(string(state),NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,...
-    'VariableNames',{'state','objective','ctle_requested_dB','ctle_applied_dB','ffe_current','driver_gain_error',...
-    'driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI','spare_offset_initial_UI',...
-    'spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'});
+row=table(string(state),'VariableNames',{'state'});
+names={'objective','disturbed_objective','recovered_objective','control_changed','ctle_requested_dB','ctle_applied_dB',...
+    'ctle_residual_dB','ffe_current','driver_gain_error','tx_gain_residual','rx_term_gain_initial','rx_term_gain_applied',...
+    'rx_term_gain_residual','driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI',...
+    'spare_offset_initial_UI','spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'};
+for k=1:numel(names), row.(names{k})=NaN; end
 row.ctle_requested_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_applied_dB=cfg.rxPma.lane.ctleBoost_dB;
 row.ffe_current=sum(abs(cfg.txPma.lane.ffeCoeffs)); row.driver_gain_error=cfg.txPma.lane.gainError;
 row.driver_swing_calibrated=double(cfg.txPma.lane.enableSwingCalibration);
+row.rx_term_gain_initial=cfg.rxPma.lane.termGain; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
 row.dac_step=2/(cfg.txPma.lane.dacLevels-1); row.dac_clipped_samples=NaN;
 end
 
-function row=adaptRow(state,obj,cfg,r,txErr,txResidual,dllResidual,dccResidual,samplerResidual)
+function row=adaptRow(state,obj,cfg,r,disturbedObj,recoveredObj,controlChanged,rxInitial)
 lane=r.model.rxPma.lane(1); cdr=lane.cdrTrace; applied=lane.afe.ctle.appliedBoost_dB;
 dm=r.model.txPma.lane(1).driver.dacMeta;
-row=table(string(state),max(0,obj),cfg.rxPma.lane.ctleBoost_dB,applied,...
-    sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)),txErr,...
-    double(r.model.txPma.lane(1).driver.dacMeta.swingCalibrated),dllResidual,dccResidual,0.04,samplerResidual,...
-    cdr.lockIndex,sum(r.result.nMeasured),cfg.link.seed,dm.step,dm.clippedSamples,...
-    'VariableNames',{'state','objective','ctle_requested_dB','ctle_applied_dB','ffe_current','driver_gain_error',...
-    'driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI','spare_offset_initial_UI',...
-    'spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'});
+row=defaultAdaptRow(state,cfg); row.objective=max(0,obj); row.disturbed_objective=disturbedObj; row.recovered_objective=recoveredObj;
+row.control_changed=controlChanged; row.ctle_applied_dB=applied; row.ctle_residual_dB=abs(applied-4.8);
+row.driver_gain_error=cfg.txPma.lane.gainError; row.tx_gain_residual=abs(cfg.txPma.lane.gainError);
+row.rx_term_gain_initial=rxInitial; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
+row.ffe_current=sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); row.driver_swing_calibrated=double(dm.swingCalibrated);
+row.dll_phase_correction_UI=0.01; row.dcc_duty_correction_UI=0.01; row.spare_offset_initial_UI=0.04; row.spare_offset_residual_UI=0.005;
+row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=dm.step; row.dac_clipped_samples=dm.clippedSamples;
 end
 
 function obj=adaptObjective(p)
@@ -274,7 +298,7 @@ function writeAssumptions(path)
 fid=fopen(path,'w'); assert(fid>0,'Unable to write %s.',path);
 fprintf(fid,['# VLSI2024 XSR behavioral assumptions\n\n' ...
     '- The formal paper profile uses `model.useReferenceAlign=false` and a decision-directed BB-CDR/PI path (reference-free in Task/Stage E). TX reference bits are passed only to the final BER checker.\n' ...
-    '- Static A-D checkpoint rows retain the legacy oracle/reference-bit alignment for compatibility; they are not the formal paper BB-CDR result.\n' ...
+    '- Static A-D checkpoint rows use the formal reference-free BB-CDR/PI path; legacy oracle/reference-bit alignment is exercised only by typical/ideal compatibility and T1-T9.\n' ...
     '- 112.5 Gb/s is the TX-eye baseline context, while the paper BER plot/text uses 112 Gb/s and headline/Table uses 113 Gb/s.\n' ...
     '- The profile uses 2^18 bits by default; bounded static/adaptation/jitter sweeps may use fewer bits and record that sample count in each row.\n' ...
     '- Finite simulation cannot prove the paper''s <1e-14/<1e-12 BER; it reports empirical BER and a 95%% finite-sample upper bound.\n' ...
@@ -287,13 +311,19 @@ end
 
 function writeCdrArtifacts(p,resultRoot,cfg)
 lane=p.rxPma.lane(1); t=lane.cdrTrace; n=numel(t.piCodeTrace); k=(1:n)';
-lock=table(k,logical(t.cdr_lock_trace(:)),t.piCodeTrace(:),t.errorTrace(:),t.dataPhaseUI(:),t.edgePhaseUI(:),...
-    t.residualPhaseUI(:),repmat(1,n,1),repmat(cfg.link.seed,n,1),repmat(string(cfg.model.trainingMode),n,1),...
-    'VariableNames',{'sample','locked','pi_code','phase_error','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed','training_mode'});
+lock=table(k,logical(t.cdr_lock_trace(:)),logical(t.transitionTrace(:)),t.piCodeTrace(:),t.piRawCodeTrace(:),...
+    t.piWrappedCodeTrace(:),t.piAppliedCodeTrace(:),t.piMismatchTrace(:),t.piWrapCountTrace(:),t.errorTrace(:),...
+    t.dataPhaseUI(:),t.edgePhaseUI(:),t.residualPhaseUI(:),repmat(1,n,1),repmat(cfg.link.seed,n,1),...
+    repmat(string(cfg.model.trainingMode),n,1),...
+    'VariableNames',{'sample','locked','transition','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
+    'pi_mismatch_LSB','pi_wrap_count','phase_error','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed','training_mode'});
 writetable(lock,fullfile(resultRoot,'cdr_lock_trace.csv'));
-pi=lock(:,{'sample','pi_code','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed'});
+stride=max(1,ceil(n/4096)); pi=lock(1:stride:end,{'sample','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
+    'pi_mismatch_LSB','pi_wrap_count','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed'});
+pi.pi_trace_stride=repmat(stride,height(pi),1); pi.trace_context=repmat("downsampled PI audit trace",height(pi),1);
 writetable(pi,fullfile(resultRoot,'pi_code_trace.csv'));
-edges=linspace(-0.5,0.5,21); counts=histcounts(t.residualPhaseUI,edges); centers=(edges(1:end-1)+edges(2:end))/2;
+edges=[-Inf linspace(-0.5,0.5,21) Inf]; counts=histcounts(t.residualPhaseUI,edges); centers=[-Inf (edges(2:end-2)+edges(3:end-1))/2 Inf];
+assert(sum(counts)==n,'Residual histogram does not cover all CDR samples.');
 histogramTable=table(centers(:),counts(:),repmat(n,numel(centers),1),repmat(cfg.link.seed,numel(centers),1),...
     'VariableNames',{'residual_phase_UI_bin','count','sample_count','seed'});
 writetable(histogramTable,fullfile(resultRoot,'residual_phase_histogram.csv'));

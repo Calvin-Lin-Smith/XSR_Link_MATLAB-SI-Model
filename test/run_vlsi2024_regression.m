@@ -12,13 +12,14 @@ adapt.cfg.model.staticSweepSampleBits=staticBits; writeJson(adapt.cfg,fullfile(r
 writeJitterTolerance(base.cfg,resultRoot,nBits);
 writePaperComparison(base,static,adapt,resultRoot);
 legacyRoot=fullfile(resultRoot,'legacy_t1_t9'); ensureDir(legacyRoot); legacy=run_all_tests(legacyRoot);
-schemaPass=true;
+baselinePass=baselineRunPass(base,resultRoot); staticPass=staticRunPass(static,resultRoot); adaptationPass=adaptationRunPass(adapt); legacyPass=all(legacy.pass);
+schemaPass=false;
 summary=table(["baseline_cdr_pi";"static_link";"adaptation";"legacy_t1_t9";"artifact_schema"],...
-    [true;true;all(adapt.stateTrace.objective(3:end)>=0);all(legacy.pass);schemaPass],...
-    ["formal decision-directed CDR/PI";"legacy static link and FFE/CTLE sweep";"bounded calibration/adaptation";"fresh T1-T9";"reopen and required labels"],...
+    [baselinePass;staticPass;adaptationPass;legacyPass;schemaPass],...
+    ["formal decision-directed CDR/PI";"reference-free static link and FFE/CTLE sweep";"bounded calibration/adaptation";"fresh T1-T9";"reopen and required labels"],...
     'VariableNames',{'stage','pass','detail'});
 writetable(summary,fullfile(resultRoot,'regression_summary.csv'));
-schemaPass=validateArtifacts(resultRoot); summary.pass(5)=schemaPass;
+[schemaPass,~]=validate_vlsi2024_artifacts(resultRoot,'ignore_summary'); summary.pass(5)=schemaPass;
 writetable(summary,fullfile(resultRoot,'regression_summary.csv'));
 assert(all(summary.pass),'VLSI2024 regression failed.');
 out=struct('mode',mode,'resultRoot',resultRoot,'summary',summary,'baseline',base,'static',static,...
@@ -32,6 +33,24 @@ elseif mod(numel(args),2)==0
     for k=1:2:numel(args), if strcmpi(char(args{k}),'nbits'), nBits=args{k+1}; else, error('run_vlsi2024_regression:Option','Unsupported option.'); end, end
 else, error('run_vlsi2024_regression:Option','Use nBits as a scalar override.'); end
 validateattributes(nBits,{'numeric'},{'scalar','integer','positive'});
+end
+
+function pass=baselineRunPass(base,resultRoot)
+lock=readtable(fullfile(resultRoot,'cdr_lock_trace.csv')); locked=any(lock.locked);
+pass=base.cfg.model.useReferenceAlign==false && all(base.result.nMeasured>0) && all(base.result.errCnt>=0) &&...
+    all(isfinite(base.result.ber)) && locked;
+end
+
+function pass=staticRunPass(static,resultRoot)
+pass=isfield(static,'ffe') && height(static.ffe)==2 && all(static.ffe.measured_bits>0) &&...
+    isfile(fullfile(resultRoot,'channel_il.csv')) && static.cfg.model.useReferenceAlign==false;
+if pass, il=readtable(fullfile(resultRoot,'channel_il.csv')); pass=all(il.measured_bits>0)&&all(abs(il.error_dB)<=il.tolerance_dB); end
+end
+
+function pass=adaptationRunPass(adapt)
+pass=isfield(adapt,'stateTrace')&&height(adapt.stateTrace)==5&&all(adapt.stateTrace.objective(3:end)>=0)&&...
+    ismember('disturbed_objective',adapt.stateTrace.Properties.VariableNames);
+if pass, m=adapt.stateTrace(strcmp(string(adapt.stateTrace.state),'MISSION_TRACK'),:); pass=~isempty(m)&&m.disturbed_objective<m.recovered_objective&&m.control_changed; end
 end
 
 function writeJitterTolerance(cfg,resultRoot,nBits)
@@ -60,21 +79,6 @@ fprintf(fid,['# VLSI2024 XSR comparison\n\n' ...
     '- Paper facts: 8 lanes + PLL; 9.8-113 Gb/s PAM4/NRZ; 3/optional 6-tap FFE; 7.5-bit/206-level SST DAC; 1-80 mm 2D/2.5D CoWoS; text 0.5-10 dB and Table-1 10.8 dB insertion loss at 28 GHz; NEXT/FEXT -40/-38 dB; AC leveling; CTLE 0-6 dB in 0.2 dB steps; sampler roles; 2 DLL + PI/BB-CDR; PI mismatch below +/-0.5 LSB; PRBS31; 194 fs PLL+TX integrated-jitter context; 2.5 dB COM at 1e-6; quoted BER, 0.9 pJ/b, 0.65 V, and area facts.\n' ...
     '- Model outputs: empirical BER rows include errors, measured bits, seed, and a 95%% finite-sample upper bound. They are behavioral finite-sample observations, not proof of the paper BER claims.\n' ...
     '- Limitations: no S-parameters/reflections, MIMO crosstalk, transistor/T-coil circuits, exact disclosed FFE coefficients, true DLL/PI transfer, silicon calibration logic, or power breakdown.\n']); fclose(fid);
-end
-
-function ok=validateArtifacts(root)
-required={"config.json","assumptions.md","baseline_metrics.csv","ffe_3_vs_6.csv","channel_il.csv",...
-    "ctle_adaptation_trace.csv","cdr_lock_trace.csv","pi_code_trace.csv","residual_phase_histogram.csv",...
-    "jitter_tolerance.csv","adaptation_state_trace.csv","paper_comparison.csv","paper_comparison.md",...
-    "regression_summary.csv","baseline_probes.mat","plots/cdr_residual_phase.png","legacy_t1_t9/summary.csv"};
-ok=true; for k=1:numel(required), ok=ok&&isfile(fullfile(root,required{k})); end
-if ~ok, return; end
-j=jsondecode(fileread(fullfile(root,'config.json'))); assert(isfield(j,'model')&&isfield(j.model,'useReferenceAlign'));
-csvs=dir(fullfile(root,'**','*.csv')); for k=1:numel(csvs), t=readtable(fullfile(csvs(k).folder,csvs(k).name)); assert(~isempty(t.Properties.VariableNames)); end
-jsons=dir(fullfile(root,'**','*.json')); for k=1:numel(jsons), jsondecode(fileread(fullfile(jsons(k).folder,jsons(k).name))); end
-mats=dir(fullfile(root,'**','*.mat')); for k=1:numel(mats), whos('-file',fullfile(mats(k).folder,mats(k).name)); end
-md=dir(fullfile(root,'**','*.md')); for k=1:numel(md), assert(strlength(string(fileread(fullfile(md(k).folder,md(k).name))))>0); end
-assert(~isempty(imfinfo(fullfile(root,'plots','cdr_residual_phase.png'))));
 end
 
 function r=runLocal(cfg)
