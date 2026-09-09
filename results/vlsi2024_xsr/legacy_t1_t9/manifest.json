@@ -1,6 +1,6 @@
 {
   "matlab": "24.2.0.2712019 (R2024b)",
-  "timestamp": "2026-09-06T23:55:21",
+  "timestamp": "2026-09-07T00:57:37",
   "seed": 42,
   "note": "Behavioral relative-trend model; PRQS10 is a documented surrogate; empirical BER only."
 }

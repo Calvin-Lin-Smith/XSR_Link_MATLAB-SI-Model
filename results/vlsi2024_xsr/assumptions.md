@@ -1,7 +1,7 @@
 # VLSI2024 XSR behavioral assumptions
 
 - The formal paper profile uses `model.useReferenceAlign=false` and a decision-directed BB-CDR/PI path (reference-free in Task/Stage E). TX reference bits are passed only to the final BER checker.
-- Static A-D checkpoint rows retain the legacy oracle/reference-bit alignment for compatibility; they are not the formal paper BB-CDR result.
+- Static A-D checkpoint rows use the formal reference-free BB-CDR/PI path; legacy oracle/reference-bit alignment is exercised only by typical/ideal compatibility and T1-T9.
 - 112.5 Gb/s is the TX-eye baseline context, while the paper BER plot/text uses 112 Gb/s and headline/Table uses 113 Gb/s.
 - The profile uses 2^18 bits by default; bounded static/adaptation/jitter sweeps may use fewer bits and record that sample count in each row.
 - Finite simulation cannot prove the paper's <1e-14/<1e-12 BER; it reports empirical BER and a 95% finite-sample upper bound.

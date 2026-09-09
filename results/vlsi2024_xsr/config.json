@@ -240,8 +240,7 @@
     "trainingMode": "decision_directed",
     "cdrOptions": {
       "nCodes": 64,
-      "initialPhaseUI": 0.9375,
-      "targetPhaseUI": 0.9375,
+      "initialPhaseUI": 0.5,
       "loopGainCodes": 1,
       "loopBandwidthProxy": 0.015625,
       "updateCadence": 1,
@@ -261,10 +260,12 @@
         "INITIAL_EQ_TRAIN",
         "MISSION_TRACK"
       ],
+      "enabled": true,
       "objective": "minimum adjacent decision-level margin",
-      "disturbance": "TX gain error + CTLE drift",
+      "disturbance": "TX gain + RX term + channel loss + CTLE drift",
       "initialError": {
         "txGain": 0.08,
+        "rxTermGain": 0.08,
         "ctle_dB": 0.8,
         "dllPhaseUI": 0.03,
         "dccDutyUI": 0.02,
@@ -284,7 +285,7 @@
         0.98,
         -0.01
       ],
-      "selectedObjective": 0.9385781030823499
+      "selectedObjective": 0.82379961070904772
     },
     "adaptationSampleBits": 16384,
     "staticSweepSampleBits": 16384
