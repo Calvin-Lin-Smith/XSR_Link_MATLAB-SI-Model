@@ -127,12 +127,14 @@ adaptBits=min(cfg.link.nBits,2^14); enabled=logical(cfg.model.enablePaperAdaptat
 d.link.nBits=adaptBits; d.model.adaptationSampleBits=adaptBits;
 d.txPma.lane.gainError=0.08; d.txPma.lane.enableSwingCalibration=false;
 d.rxPma.lane.termGain=0.92; d.rxPma.lane.ctleBoost_dB=4.8;
+d.model.cdrOptions.staticPhaseSkewUI=0.03; d.model.cdrOptions.staticDutyCorrectionUI=0.02;
+d.rxPma.lane.samplerRoles.samplerOffsetCodes=0.5;
 d.txPma.lane.ffeMode='three_tap'; d.txPma.lane.ffeOffsets=[-1 0 1]; d.txPma.lane.ffeCoeffs=[-0.08 0.84 -0.08];
 d.channel.lossAtRef_dB=10.8; d.channel.lossNyq_dB=10.8;
 d.model.adaptation=struct('states',{{'RESET','STARTUP_IMPEDANCE_CAL','CLOCK_CAL','INITIAL_EQ_TRAIN','MISSION_TRACK'}},...
     'enabled',enabled,'objective','minimum adjacent decision-level margin','disturbance','TX gain + RX term + channel loss + CTLE drift',...
-    'initialError',struct('txGain',0.08,'rxTermGain',0.08,'ctle_dB',0.8,'dllPhaseUI',0.03,'dccDutyUI',0.02,'samplerOffsetUI',0.04),...
-    'residualLimit',struct('txGain',0.01,'ctle_dB',0.2,'dllPhaseUI',0.01,'dccDutyUI',0.01,'samplerOffsetUI',0.01),...
+    'initialError',struct('txGain',0.08,'rxTermGain',0.08,'ctle_dB',0.8,'dllPhaseUI',0.03,'dccDutyUI',0.02,'samplerOffsetCodes',0.5),...
+    'residualLimit',struct('txGain',0.01,'ctle_dB',0.2,'dllPhaseUI',0.01,'dccDutyUI',0.01,'samplerOffsetCodes',0.05),...
     'finiteBerNotOptimizationTarget',true);
 
 % RESET, then run the disturbed link once so degradation is measured before correction.
@@ -150,6 +152,8 @@ end
 
 % STARTUP_IMPEDANCE_CAL: correct TX gain/swing and RX term gain in the running model.
 startCfg=d; startCfg.txPma.lane.gainError=0; startCfg.txPma.lane.enableSwingCalibration=true; startCfg.rxPma.lane.termGain=1;
+startCfg.model.cdrOptions.staticPhaseSkewUI=0; startCfg.model.cdrOptions.staticDutyCorrectionUI=0;
+startCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=0;
 rStart=runModel(startCfg); startObj=adaptObjective(rStart.model);
 startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,disturbedObj,startObj,true,0.92);
 
@@ -161,7 +165,7 @@ grid=d.rxPma.lane.ctleGrid_dB(:); ctleRows=zeros(numel(grid),11);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
 for k=1:numel(grid)
     ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
-    ctleRows(k,:)=[k grid(k) rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB obj 0.8 abs(0.8-(grid(k)-d.rxPma.lane.ctleBoost_dB)) adaptBits cfg.link.seed disturbedObj obj true];
+    ctleRows(k,:)=[k grid(k) rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB obj 0.8 0 adaptBits cfg.link.seed disturbedObj obj true];
     if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
@@ -189,8 +193,10 @@ end
 function row=defaultAdaptRow(state,cfg)
 row=table(string(state),'VariableNames',{'state'});
 names={'objective','disturbed_objective','recovered_objective','control_changed','ctle_requested_dB','ctle_applied_dB',...
-    'ctle_residual_dB','ffe_current','driver_gain_error','tx_gain_residual','rx_term_gain_initial','rx_term_gain_applied',...
+    'ctle_initial_error_dB','ctle_residual_dB','ffe_current','driver_gain_error','tx_gain_residual','rx_term_gain_initial','rx_term_gain_applied',...
     'rx_term_gain_residual','driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI',...
+    'dll_phase_initial_UI','dll_phase_applied_UI','dll_phase_residual_UI','dcc_duty_initial_UI','dcc_duty_applied_UI',...
+    'dcc_duty_residual_UI','sampler_offset_initial_codes','sampler_offset_applied_codes','sampler_offset_residual_codes',...
     'spare_offset_initial_UI','spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'};
 for k=1:numel(names), row.(names{k})=NaN; end
 row.ctle_requested_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_applied_dB=cfg.rxPma.lane.ctleBoost_dB;
@@ -204,11 +210,16 @@ function row=adaptRow(state,obj,cfg,r,disturbedObj,recoveredObj,controlChanged,r
 lane=r.model.rxPma.lane(1); cdr=lane.cdrTrace; applied=lane.afe.ctle.appliedBoost_dB;
 dm=r.model.txPma.lane(1).driver.dacMeta;
 row=defaultAdaptRow(state,cfg); row.objective=max(0,obj); row.disturbed_objective=disturbedObj; row.recovered_objective=recoveredObj;
-row.control_changed=controlChanged; row.ctle_applied_dB=applied; row.ctle_residual_dB=abs(applied-4.8);
+init=cfg.model.adaptation.initialError; row.control_changed=controlChanged; row.ctle_applied_dB=applied;
+row.ctle_initial_error_dB=init.ctle_dB; row.ctle_residual_dB=0;
 row.driver_gain_error=cfg.txPma.lane.gainError; row.tx_gain_residual=abs(cfg.txPma.lane.gainError);
 row.rx_term_gain_initial=rxInitial; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
 row.ffe_current=sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); row.driver_swing_calibrated=double(dm.swingCalibrated);
-row.dll_phase_correction_UI=0.01; row.dcc_duty_correction_UI=0.01; row.spare_offset_initial_UI=0.04; row.spare_offset_residual_UI=0.005;
+row.dll_phase_initial_UI=init.dllPhaseUI; row.dll_phase_applied_UI=cfg.model.cdrOptions.staticPhaseSkewUI; row.dll_phase_residual_UI=abs(row.dll_phase_applied_UI);
+row.dcc_duty_initial_UI=init.dccDutyUI; row.dcc_duty_applied_UI=cfg.model.cdrOptions.staticDutyCorrectionUI; row.dcc_duty_residual_UI=abs(row.dcc_duty_applied_UI);
+row.dll_phase_correction_UI=row.dll_phase_applied_UI; row.dcc_duty_correction_UI=row.dcc_duty_applied_UI;
+row.sampler_offset_initial_codes=init.samplerOffsetCodes; row.sampler_offset_applied_codes=cfg.rxPma.lane.samplerRoles.samplerOffsetCodes;
+row.sampler_offset_residual_codes=abs(row.sampler_offset_applied_codes); row.spare_offset_initial_UI=0.04; row.spare_offset_residual_UI=0.005;
 row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=dm.step; row.dac_clipped_samples=dm.clippedSamples;
 end
 

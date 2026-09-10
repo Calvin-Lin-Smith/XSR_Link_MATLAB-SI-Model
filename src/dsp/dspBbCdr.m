@@ -10,6 +10,7 @@ lockWindow=getField(options,'lockWindow',32); lockTol=getField(options,'lockTole
 maxStep=getField(options,'maxStepCodes',max(1,ceil(abs(loopGain))));
 updateCadence=getField(options,'updateCadence',1); bandwidthProxy=getField(options,'loopBandwidthProxy',loopGain/nCodes);
 minTransitions=getField(options,'minTransitions',max(4,ceil(lockWindow/8))); maxCodeSpan=getField(options,'maxCodeSpanCodes',8);
+staticPhaseSkewUI=getField(options,'staticPhaseSkewUI',0); staticDutyCorrectionUI=getField(options,'staticDutyCorrectionUI',0);
 piOptions=struct('nCodes',nCodes,'mismatchBoundLSB',getField(options,'mismatchBoundLSB',0),...
     'mismatchSeed',getField(options,'mismatchSeed',0));
 validateattributes(initialPhaseUI,{'numeric'},{'scalar','real','finite'});
@@ -20,6 +21,8 @@ validateattributes(maxStep,{'numeric'},{'scalar','real','finite','positive'});
 validateattributes(updateCadence,{'numeric'},{'scalar','integer','positive'});
 validateattributes(minTransitions,{'numeric'},{'scalar','integer','positive'});
 validateattributes(maxCodeSpan,{'numeric'},{'scalar','real','finite','nonnegative'});
+validateattributes(staticPhaseSkewUI,{'numeric'},{'scalar','real','finite'});
+validateattributes(staticDutyCorrectionUI,{'numeric'},{'scalar','real','finite'});
 rawCode=initialPhaseUI*nCodes; nSym=floor((numel(x)-1)/sps)+1;
 jitterUI=getField(options,'jitterUI',zeros(nSym,1)); jitterUI=jitterUI(:);
 if isscalar(jitterUI), jitterUI=repmat(jitterUI,nSym,1); end
@@ -36,9 +39,11 @@ for k=1:nSym
     [phase,piMeta]=dspPiClock(rawCode,sps,piOptions);
     piRawCodeTrace(k)=piMeta.rawCode; piWrappedCodeTrace(k)=piMeta.wrappedCode;
     piAppliedCodeTrace(k)=piMeta.appliedCode; piMismatchTrace(k)=piMeta.mismatchLSB; piWrapCountTrace(k)=piMeta.wrapCount;
-    piCodeTrace(k)=piMeta.wrappedCode; appliedPhaseUI(k)=phase; dataPhaseUI(k)=phase;
-    edgePhaseUI(k)=mod(phase+0.125,1);
-    effectivePhase=phase+jitterUI(k); idx=round((k-1)*sps+effectivePhase*sps)+1; eidx=idx-round(sps/4); lidx=idx+round(sps/4);
+    dataPhase=mod(phase+staticPhaseSkewUI+0.5*staticDutyCorrectionUI,1);
+    edgePhase=mod(phase+staticPhaseSkewUI+0.125-0.5*staticDutyCorrectionUI,1);
+    piCodeTrace(k)=piMeta.wrappedCode; appliedPhaseUI(k)=dataPhase; dataPhaseUI(k)=dataPhase;
+    edgePhaseUI(k)=edgePhase;
+    effectivePhase=dataPhase+jitterUI(k); idx=round((k-1)*sps+effectivePhase*sps)+1; eidx=idx-round(sps/4); lidx=idx+round(sps/4);
     if idx>=1 && idx<=numel(x)
         samples(k)=x(idx); decisionTrace(k)=decisionValue(samples(k),modulation);
         bits((k-1)*bps+(1:bps))=decisionBits(decisionTrace(k),modulation);
@@ -51,7 +56,7 @@ for k=1:nSym
             e=sign(earlyLateMetric(k));
             errorTrace(k)=e;
             if ~isnan(prev) && decisionTrace(k)~=prev
-                transitionTrace(k)=true; transitionPhaseUI(k)=phase;
+                transitionTrace(k)=true; transitionPhaseUI(k)=dataPhase;
                 if isempty(transitionHistory), residualPhaseUI(k)=0;
                 else, residualPhaseUI(k)=wrapPhase(phase-median(transitionHistory(max(1,end-7):end))); end
                 transitionHistory=[transitionHistory phase]; if numel(transitionHistory)>64, transitionHistory=transitionHistory(end-63:end); end %#ok<AGROW>
@@ -78,6 +83,7 @@ end
 trace=struct('enabled',enabled,'nCodes',nCodes,'initialPhaseUI',initialPhaseUI,...
     'loopGainCodes',loopGain,'loopBandwidthProxy',bandwidthProxy,'updateCadence',updateCadence,...
     'lockWindow',lockWindow,'lockToleranceUI',lockTol,'minTransitions',minTransitions,'maxCodeSpanCodes',maxCodeSpan,...
+    'staticPhaseSkewUI',staticPhaseSkewUI,'staticDutyCorrectionUI',staticDutyCorrectionUI,...
     'lockIndex',lockIndex,'locked',lockIndex>0,'cdr_lock_trace',lockTrace,...
     'piCodeTrace',piCodeTrace,'rawCodeTrace',piRawCodeTrace,'piRawCodeTrace',piRawCodeTrace,...
     'piWrappedCodeTrace',piWrappedCodeTrace,'piAppliedCodeTrace',piAppliedCodeTrace,...

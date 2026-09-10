@@ -4,9 +4,13 @@ ok=false; detail='';
 requireSummary=~(nargin>1&&strcmpi(char(varargin{1}),'ignore_summary'));
 try
     required={"config.json","assumptions.md","baseline_metrics.csv","ffe_3_vs_6.csv","channel_il.csv",...
+        "channel_response.csv","loss_sweep_metrics.csv","static_regression_summary.csv","ac_ctle.csv",...
         "ctle_adaptation_trace.csv","cdr_lock_trace.csv","pi_code_trace.csv","residual_phase_histogram.csv",...
         "jitter_tolerance.csv","adaptation_state_trace.csv","paper_comparison.csv","paper_comparison.md",...
-        "regression_summary.csv","baseline_probes.mat","plots/cdr_residual_phase.png","legacy_t1_t9/summary.csv"};
+        "regression_summary.csv","baseline_probes.mat","plots/cdr_residual_phase.png",...
+        "legacy_t1_t9/summary.csv","legacy_t1_t9/junit.xml","legacy_t1_t9/manifest.json","legacy_t1_t9/probes.json",...
+        "legacy_t1_t9/T1_eye_metrics.csv","legacy_t1_t9/T3_bathtub.csv","legacy_t1_t9/T6_patterns.csv",...
+        "legacy_t1_t9/T7_modulation.csv","legacy_t1_t9/T9_loopback.csv"};
     for k=1:numel(required), assert(isfile(fullfile(root,required{k})),'Missing artifact: %s',required{k}); end
     cfg=jsondecode(fileread(fullfile(root,'config.json')));
     assert(isfield(cfg,'link')&&isfield(cfg.link,'nBits')&&cfg.link.nBits>0,'config link.nBits missing');
@@ -28,23 +32,43 @@ try
     il=readtable(fullfile(root,'channel_il.csv')); requireVars(il,{'requested_loss_dB','measured_loss_dB','measured_bits','error_dB','tolerance_dB'});
     assert(all(il.measured_bits>0)&&all(isfinite(il.measured_loss_dB))&&all(abs(il.error_dB)<=il.tolerance_dB),...
         'channel IL schema/value invariant failed');
+    response=readtable(fullfile(root,'channel_response.csv')); requireVars(response,{'frequency_GHz','baud_GBd','requested_loss_dB','measured_loss_dB','error_dB','tolerance_dB','mode','unmodeledCrosstalk'});
+    assert(all(response.frequency_GHz>0)&&all(response.baud_GBd>0)&&...
+        all(abs((response.measured_loss_dB-response.requested_loss_dB)-response.error_dB)<=1e-12)&&...
+        all(abs(response.error_dB)<=response.tolerance_dB),...
+        'channel response schema/value invariant failed');
+    loss=readtable(fullfile(root,'loss_sweep_metrics.csv')); checkBer(loss,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'}); requireVars(loss,{'lossAtRef_dB','rate_context_Gbps','mode','lane_context'});
     ffe=readtable(fullfile(root,'ffe_3_vs_6.csv')); checkBer(ffe,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'}); requireVars(ffe,{'tap_count','coefficients'});
     ac=readtable(fullfile(root,'ac_ctle.csv')); checkBer(ac,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'}); requireVars(ac,{'ac_enabled','ctle_applied_dB'});
     jitter=readtable(fullfile(root,'jitter_tolerance.csv')); checkBer(jitter,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'}); requireVars(jitter,{'sample_bits','mode','rate_context_Gbps','lane_context'});
-    ctle=readtable(fullfile(root,'ctle_adaptation_trace.csv')); requireVars(ctle,{'objective','disturbed_objective','recovered_objective','control_changed'});
+    static=readtable(fullfile(root,'static_regression_summary.csv')); checkBer(static,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'}); requireVars(static,{'variant','mode','rate_context_Gbps','lane_context'});
+    ctle=readtable(fullfile(root,'ctle_adaptation_trace.csv')); requireVars(ctle,{'objective','disturbed_objective','recovered_objective','control_changed','residual_ctle_error_dB'});
+    assert(all(ctle.residual_ctle_error_dB<=0.2+1e-12),'CTLE residual exceeds limit');
     adapt=readtable(fullfile(root,'adaptation_state_trace.csv')); requireVars(adapt,{'state','objective','disturbed_objective',...
-        'recovered_objective','control_changed','rx_term_gain_applied','tx_gain_residual'});
+        'recovered_objective','control_changed','rx_term_gain_applied','tx_gain_residual','dll_phase_initial_UI',...
+        'dll_phase_applied_UI','dll_phase_residual_UI','dcc_duty_initial_UI','dcc_duty_applied_UI','dcc_duty_residual_UI',...
+        'sampler_offset_initial_codes','sampler_offset_applied_codes','sampler_offset_residual_codes','ctle_initial_error_dB','ctle_residual_dB'});
     states=string(adapt.state); assert(isequal(states,["RESET";"STARTUP_IMPEDANCE_CAL";"CLOCK_CAL";"INITIAL_EQ_TRAIN";"MISSION_TRACK"]),...
         'adaptation states invalid'); mission=adapt(states=="MISSION_TRACK",:);
     assert(mission.disturbed_objective<mission.recovered_objective&&mission.control_changed,'adaptation did not recover');
+    assert(mission.dll_phase_residual_UI<=cfg.model.adaptation.residualLimit.dllPhaseUI+1e-12&&...
+        mission.dcc_duty_residual_UI<=cfg.model.adaptation.residualLimit.dccDutyUI+1e-12&&...
+        mission.sampler_offset_residual_codes<=cfg.model.adaptation.residualLimit.samplerOffsetCodes+1e-12&&...
+        mission.ctle_residual_dB<=cfg.model.adaptation.residualLimit.ctle_dB+1e-12,'adaptation residual limit failed');
     comparison=readtable(fullfile(root,'paper_comparison.csv')); requireVars(comparison,{'category','item','paper_value','model_value'});
-    jsondecode(fileread(fullfile(root,'legacy_t1_t9','manifest.json'))); jsondecode(fileread(fullfile(root,'legacy_t1_t9','probes.json')));
+    manifest=jsondecode(fileread(fullfile(root,'legacy_t1_t9','manifest.json'))); probes=jsondecode(fileread(fullfile(root,'legacy_t1_t9','probes.json'))); %#ok<NASGU>
     assert(~isempty(whos('-file',fullfile(root,'baseline_probes.mat'))));
     assert(strlength(string(fileread(fullfile(root,'assumptions.md'))))>0&&strlength(string(fileread(fullfile(root,'paper_comparison.md'))))>0);
     summary=readcell(fullfile(root,'regression_summary.csv'),'Delimiter',','); assert(size(summary,2)>=3&&strcmp(summary{1,1},'stage')&&strcmp(summary{1,2},'pass'),...
         'regression summary schema invalid'); if requireSummary, assert(all(cell2mat(summary(2:end,2))==1),'regression summary contains failure'); end
     legacy=readcell(fullfile(root,'legacy_t1_t9','summary.csv'),'Delimiter',','); assert(size(legacy,2)>=2&&strcmp(legacy{1,1},'test')&&strcmp(legacy{1,2},'pass')&&size(legacy,1)==10&&all(cell2mat(legacy(2:end,2))==1),...
         'legacy T1-T9 evidence invalid');
+    t1=readtable(fullfile(root,'legacy_t1_t9','T1_eye_metrics.csv')); requireVars(t1,{'modeIndex','baudG','lossDb','ber','eyeHeight'}); assert(height(t1)==16&&all(isfinite(t1.eyeHeight)),'legacy T1 schema/value invalid');
+    t3=readtable(fullfile(root,'legacy_t1_t9','T3_bathtub.csv')); requireVars(t3,{'offsetUI','phase','delay','phaseBer'}); assert(all(isfinite(t3.phaseBer)),'legacy T3 schema/value invalid');
+    t6=readtable(fullfile(root,'legacy_t1_t9','T6_patterns.csv')); requireVars(t6,{'patternIndex','injected','detected'}); assert(all(t6.injected==t6.detected),'legacy T6 mismatch');
+    t7=readtable(fullfile(root,'legacy_t1_t9','T7_modulation.csv')); requireVars(t7,{'modulation','ber'}); assert(height(t7)==2&&all(t7.ber>=0&t7.ber<=1),'legacy T7 schema/value invalid');
+    t9=readtable(fullfile(root,'legacy_t1_t9','T9_loopback.csv')); requireVars(t9,{'mode','pass'}); assert(height(t9)==3&&all(t9.pass),'legacy T9 failed');
+    junit=fileread(fullfile(root,'legacy_t1_t9','junit.xml')); assert(contains(junit,'tests="9"')&&contains(junit,'failures="0"')&&count(junit,'<testcase')==9,'legacy JUnit invalid');
     assert(strlength(string(fileread(fullfile(root,'assumptions.md'))))>0&&~isempty(imfinfo(fullfile(root,'plots','cdr_residual_phase.png'))));
     ok=true; detail='OK';
 catch ME
@@ -58,6 +82,13 @@ end
 
 function checkBer(t,names)
 requireVars(t,names); assert(all(t.errors>=0)&&all(t.measured_bits>0),'invalid BER counts');
-assert(all(t.empirical_BER>=0&t.empirical_BER<=1)&&all(t.ber_upper_95>=t.empirical_BER-1e-12),...
+assert(all(t.errors<=t.measured_bits),'errors exceed measured bits');
+assert(all(t.empirical_BER>=0&t.empirical_BER<=1)&&all(abs(t.empirical_BER-t.errors./t.measured_bits)<=1e-12),...
+    'empirical BER ratio invalid');
+assert(all(t.ber_upper_95>=t.empirical_BER-1e-12)&all(t.ber_upper_95<=1+1e-12),...
     'invalid BER/upper-bound values'); z=t.errors==0; if any(z), assert(all(abs(t.ber_upper_95(z)-3./t.measured_bits(z))<1e-12),'zero-error bound invalid'); end
+if ismember('seed',t.Properties.VariableNames), assert(all(isfinite(t.seed)),'invalid seed context'); end
+if ismember('rate_context_Gbps',t.Properties.VariableNames), assert(all(t.rate_context_Gbps>0),'invalid rate context'); end
+if ismember('lane_context',t.Properties.VariableNames), assert(all(strlength(string(t.lane_context))>0),'invalid lane context'); end
+if ismember('sample_bits',t.Properties.VariableNames), assert(all(t.sample_bits>0),'invalid sample context'); end
 end
