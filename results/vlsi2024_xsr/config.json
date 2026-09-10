@@ -149,6 +149,7 @@
             -3
           ]
         },
+        "samplerOffsetCodes": 0,
         "thresholdAssumptions": [
           -2,
           0,
@@ -269,14 +270,14 @@
         "ctle_dB": 0.8,
         "dllPhaseUI": 0.03,
         "dccDutyUI": 0.02,
-        "samplerOffsetUI": 0.04
+        "samplerOffsetCodes": 0.5
       },
       "residualLimit": {
         "txGain": 0.01,
         "ctle_dB": 0.2,
         "dllPhaseUI": 0.01,
         "dccDutyUI": 0.01,
-        "samplerOffsetUI": 0.01
+        "samplerOffsetCodes": 0.05
       },
       "finiteBerNotOptimizationTarget": true,
       "selectedCtle_dB": 0,
