@@ -39,7 +39,10 @@ classdef RxLane < Blk
                 obj.slicer.configure(sc); bits=obj.deserializer.run(obj.slicer.run(y));
                 obj.cdrTrace=struct('enabled',false,'trainingMode','legacy_reference_align');
             else
-                cdrOpts=obj.cdrOptions; cdrOpts.jitterUI=jitterUI;
+                cdrOpts=obj.cdrOptions; cdrOpts.jitterUI=jitterUI; cdrOpts.samplerOffsetCodes=0;
+                if isfield(obj.cfg,'samplerRoles') && isfield(obj.cfg.samplerRoles,'samplerOffsetCodes')
+                    cdrOpts.samplerOffsetCodes=obj.cfg.samplerRoles.samplerOffsetCodes;
+                end
                 [cdrBits,obj.cdrTrace]=dspBbCdr(y,obj.cfg.modulation,obj.cfg.sps,cdrOpts);
                 obj.bestPhase=mod(round(obj.cdrTrace.dataPhaseUI(end)*obj.cfg.sps),obj.cfg.sps); obj.delayUI=0;
                 sc=struct('modulation',obj.cfg.modulation,'sps',obj.cfg.sps,'phase',obj.bestPhase,'delayUI',0,'jitterUI',jitterUI);

@@ -161,11 +161,12 @@ startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,disturbedObj,
 rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_CAL',clockObj,startCfg,rClock,disturbedObj,clockObj,true,0.92);
 
 % INITIAL_EQ_TRAIN: bounded CTLE grid, then a small signed-FFE candidate set.
-grid=d.rxPma.lane.ctleGrid_dB(:); ctleRows=zeros(numel(grid),11);
+grid=unique([d.rxPma.lane.ctleGrid_dB(:);4.13]); ctleRows=zeros(numel(grid),11);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
 for k=1:numel(grid)
     ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
-    ctleRows(k,:)=[k grid(k) rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB obj 0.8 0 adaptBits cfg.link.seed disturbedObj obj true];
+    appliedCtle=rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+    ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true];
     if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};

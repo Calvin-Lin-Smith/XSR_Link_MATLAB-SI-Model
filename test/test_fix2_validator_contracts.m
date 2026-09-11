@@ -10,5 +10,7 @@ copyfile(resultRoot,tmp,'f'); t=readtable(fullfile(tmp,'channel_response.csv'));
 [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'IL out-of-tolerance row accepted');
 copyfile(resultRoot,tmp,'f'); t=readtable(fullfile(tmp,'legacy_t1_t9','T3_bathtub.csv')); t.phaseBer=[]; writetable(t,fullfile(tmp,'legacy_t1_t9','T3_bathtub.csv'));
 [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'legacy T3 schema tamper accepted');
+copyfile(resultRoot,tmp,'f'); delete(fullfile(tmp,'legacy_t1_t9','T1_eye_NRZ_28G_0dB.png')); [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'missing T1 PNG accepted');
+copyfile(resultRoot,tmp,'f'); delete(fullfile(tmp,'legacy_t1_t9','regression.mat')); [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'missing legacy MAT accepted');
 disp('Fix Round 2 validator-contract tests OK');
 end

@@ -11,6 +11,7 @@ maxStep=getField(options,'maxStepCodes',max(1,ceil(abs(loopGain))));
 updateCadence=getField(options,'updateCadence',1); bandwidthProxy=getField(options,'loopBandwidthProxy',loopGain/nCodes);
 minTransitions=getField(options,'minTransitions',max(4,ceil(lockWindow/8))); maxCodeSpan=getField(options,'maxCodeSpanCodes',8);
 staticPhaseSkewUI=getField(options,'staticPhaseSkewUI',0); staticDutyCorrectionUI=getField(options,'staticDutyCorrectionUI',0);
+samplerOffsetCodes=getField(options,'samplerOffsetCodes',0);
 piOptions=struct('nCodes',nCodes,'mismatchBoundLSB',getField(options,'mismatchBoundLSB',0),...
     'mismatchSeed',getField(options,'mismatchSeed',0));
 validateattributes(initialPhaseUI,{'numeric'},{'scalar','real','finite'});
@@ -23,12 +24,13 @@ validateattributes(minTransitions,{'numeric'},{'scalar','integer','positive'});
 validateattributes(maxCodeSpan,{'numeric'},{'scalar','real','finite','nonnegative'});
 validateattributes(staticPhaseSkewUI,{'numeric'},{'scalar','real','finite'});
 validateattributes(staticDutyCorrectionUI,{'numeric'},{'scalar','real','finite'});
+validateattributes(samplerOffsetCodes,{'numeric'},{'scalar','real','finite'});
 rawCode=initialPhaseUI*nCodes; nSym=floor((numel(x)-1)/sps)+1;
 jitterUI=getField(options,'jitterUI',zeros(nSym,1)); jitterUI=jitterUI(:);
 if isscalar(jitterUI), jitterUI=repmat(jitterUI,nSym,1); end
 if numel(jitterUI)<nSym, jitterUI(end+1:nSym,1)=0; end
 bps=1+strcmpi(modulation,'PAM4'); bits=zeros(nSym*bps,1); samples=nan(nSym,1);
-earlySamples=samples; lateSamples=samples; decisionTrace=nan(nSym,1); errorTrace=zeros(nSym,1);
+earlySamples=samples; lateSamples=samples; decisionTrace=nan(nSym,1); decisionInputTrace=nan(nSym,1); errorTrace=zeros(nSym,1);
 piCodeTrace=zeros(nSym,1); appliedPhaseUI=zeros(nSym,1); dataPhaseUI=appliedPhaseUI;
 edgePhaseUI=appliedPhaseUI; residualPhaseUI=zeros(nSym,1); lockTrace=false(nSym,1);
 earlyLateMetric=zeros(nSym,1); transitionTrace=false(nSym,1); transitionPhaseUI=nan(nSym,1);
@@ -45,13 +47,13 @@ for k=1:nSym
     edgePhaseUI(k)=edgePhase;
     effectivePhase=dataPhase+jitterUI(k); idx=round((k-1)*sps+effectivePhase*sps)+1; eidx=idx-round(sps/4); lidx=idx+round(sps/4);
     if idx>=1 && idx<=numel(x)
-        samples(k)=x(idx); decisionTrace(k)=decisionValue(samples(k),modulation);
+        samples(k)=x(idx); decisionInputTrace(k)=samples(k)+samplerOffsetCodes; decisionTrace(k)=decisionValue(decisionInputTrace(k),modulation);
         bits((k-1)*bps+(1:bps))=decisionBits(decisionTrace(k),modulation);
     end
     if eidx>=1 && lidx<=numel(x)
         earlySamples(k)=x(eidx); lateSamples(k)=x(lidx);
         if ~isnan(decisionTrace(k))
-            ev=decisionValue(earlySamples(k),modulation); lv=decisionValue(lateSamples(k),modulation);
+            ev=decisionValue(earlySamples(k)+samplerOffsetCodes,modulation); lv=decisionValue(lateSamples(k)+samplerOffsetCodes,modulation);
             earlyLateMetric(k)=abs(ev-decisionTrace(k))-abs(lv-decisionTrace(k));
             e=sign(earlyLateMetric(k));
             errorTrace(k)=e;
@@ -84,6 +86,7 @@ trace=struct('enabled',enabled,'nCodes',nCodes,'initialPhaseUI',initialPhaseUI,.
     'loopGainCodes',loopGain,'loopBandwidthProxy',bandwidthProxy,'updateCadence',updateCadence,...
     'lockWindow',lockWindow,'lockToleranceUI',lockTol,'minTransitions',minTransitions,'maxCodeSpanCodes',maxCodeSpan,...
     'staticPhaseSkewUI',staticPhaseSkewUI,'staticDutyCorrectionUI',staticDutyCorrectionUI,...
+    'samplerOffsetCodes',samplerOffsetCodes,...
     'lockIndex',lockIndex,'locked',lockIndex>0,'cdr_lock_trace',lockTrace,...
     'piCodeTrace',piCodeTrace,'rawCodeTrace',piRawCodeTrace,'piRawCodeTrace',piRawCodeTrace,...
     'piWrappedCodeTrace',piWrappedCodeTrace,'piAppliedCodeTrace',piAppliedCodeTrace,...
@@ -92,7 +95,7 @@ trace=struct('enabled',enabled,'nCodes',nCodes,'initialPhaseUI',initialPhaseUI,.
     'transitionPhaseUI',transitionPhaseUI,'dataPhaseUI',dataPhaseUI,'edgePhaseUI',edgePhaseUI,...
     'appliedPhaseUI',appliedPhaseUI,'residualPhaseUI',residualPhaseUI,...
     'samples',samples,'earlySamples',earlySamples,'lateSamples',lateSamples,...
-    'decisionTrace',decisionTrace,'architecture',struct('dll1PhaseCount',8,...
+    'decisionTrace',decisionTrace,'decisionInputTrace',decisionInputTrace,'architecture',struct('dll1PhaseCount',8,...
         'dll2DataDegrees',[0 90 180 270],'dll2EdgeDegrees',[45 135 225 315],...
         'piFollows','DLL1','trainingMode','decision_directed'),...
     'jitterUI',jitterUI,'piOptions',piOptions,'residualDefinition',...
