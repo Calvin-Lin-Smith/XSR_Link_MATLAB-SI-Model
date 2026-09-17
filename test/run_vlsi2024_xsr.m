@@ -36,7 +36,8 @@ switch mode
         end
         metrics=array2table(rows,'VariableNames',{'lossAtRef_dB','errors','measured_bits','empirical_BER','seed','ber_upper_95','rate_context_Gbps'});
         metrics.aggregateBer=metrics.empirical_BER;
-        metrics.mode=repmat(string(cfg.link.modulation),height(metrics),1); metrics.lane_context=repmat("x8",height(metrics),1);
+        metrics.mode=repmat(string(cfg.link.modulation),height(metrics),1); metrics.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(metrics),1);
+        metrics.lane_context=repmat("x8",height(metrics),1); metrics.sample_bits=repmat(cfg.link.nBits,height(metrics),1);
         writetable(metrics,fullfile(resultRoot,'loss_sweep_metrics.csv'));
         il=array2table(ilRows,'VariableNames',{'requested_loss_dB','measured_loss_dB','referenceFrequency_GHz',...
             'baud_GBd','error_dB','tolerance_dB'});
@@ -79,7 +80,8 @@ switch mode
         assert(all(acRows(3:end,3)>=0 & acRows(3:end,3)<=6));
         ac=array2table(acRows,'VariableNames',{'ac_enabled','ctle_requested_dB','ctle_applied_dB',...
             'long_run_offset','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
-        ac.mode=repmat(string(cfg.link.modulation),height(ac),1); ac.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(ac),1); ac.lane_context=repmat("x8",height(ac),1);
+        ac.mode=repmat(string(cfg.link.modulation),height(ac),1); ac.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(ac),1);
+        ac.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(ac),1); ac.lane_context=repmat("x8",height(ac),1); ac.sample_bits=repmat(cfg.link.nBits,height(ac),1);
         writetable(ac,fullfile(resultRoot,'ac_ctle.csv'));
         summary=[summaryRow('baseline',base.result,cfg); summaryRow('ffe_3tap',r3.result,cfg); ...
             summaryRow('ffe_6tap',r6.result,cfg); summaryRow('ac_off',roff.result,cfg); summaryRow('ac_on',ron.result,cfg)];
@@ -138,7 +140,7 @@ d.model.adaptation=struct('states',{{'RESET','STARTUP_IMPEDANCE_CAL','CLOCK_CAL'
     'finiteBerNotOptimizationTarget',true);
 
 % RESET, then run the disturbed link once so degradation is measured before correction.
-rDist=runModel(d); disturbedObj=adaptObjective(rDist.model); reset=defaultAdaptRow('RESET',d);
+rDist=runModel(d); disturbedObj=adaptObjective(rDist.model); reset=adaptRow('RESET',NaN,d,rDist,NaN,NaN,false,0.92);
 if ~enabled
     offRow=adaptRow('STARTUP_IMPEDANCE_CAL',disturbedObj,d,rDist,disturbedObj,disturbedObj,false,0.92);
     offRows=repmat(offRow,4,1); offRows.state=["STARTUP_IMPEDANCE_CAL";"CLOCK_CAL";"INITIAL_EQ_TRAIN";"MISSION_TRACK"];
@@ -162,11 +164,13 @@ rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_C
 
 % INITIAL_EQ_TRAIN: bounded CTLE grid, then a small signed-FFE candidate set.
 grid=unique([d.rxPma.lane.ctleGrid_dB(:);4.13]); ctleRows=zeros(numel(grid),11);
+offGridCfg=startCfg; offGridR=rStart; offGridObj=adaptObjective(rStart.model);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
 for k=1:numel(grid)
     ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
     appliedCtle=rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
     ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true];
+    if abs(grid(k)-4.13)<1e-12, offGridCfg=ck; offGridR=rk; offGridObj=obj; end
     if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
@@ -174,7 +178,8 @@ for k=1:numel(ffeCandidates)
     ck=bestCfg; ck.txPma.lane.ffeMode='three_tap'; ck.txPma.lane.ffeOffsets=[-1 0 1]; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
     rk=runModel(ck); obj=adaptObjective(rk.model); if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
 end
-trainRow=adaptRow('INITIAL_EQ_TRAIN',bestObj,bestCfg,bestR,disturbedObj,bestObj,true,0.92);
+% Preserve the off-grid quantization candidate as actual CTLE evidence in the state trace.
+trainRow=adaptRow('INITIAL_EQ_TRAIN',offGridObj,offGridCfg,offGridR,disturbedObj,bestObj,true,0.92);
 
 % MISSION_TRACK: apply a real CTLE drift, measure degradation, then restore the trained controls.
 driftCfg=bestCfg; driftCfg.rxPma.lane.ctleBoost_dB=min(6,bestCfg.rxPma.lane.ctleBoost_dB+0.8);
@@ -193,14 +198,14 @@ end
 
 function row=defaultAdaptRow(state,cfg)
 row=table(string(state),'VariableNames',{'state'});
-names={'objective','disturbed_objective','recovered_objective','control_changed','ctle_requested_dB','ctle_applied_dB',...
+names={'objective','disturbed_objective','recovered_objective','control_changed','ctle_requested_dB','ctle_target_dB','ctle_applied_dB',...
     'ctle_initial_error_dB','ctle_residual_dB','ffe_current','driver_gain_error','tx_gain_residual','rx_term_gain_initial','rx_term_gain_applied',...
     'rx_term_gain_residual','driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI',...
     'dll_phase_initial_UI','dll_phase_applied_UI','dll_phase_residual_UI','dcc_duty_initial_UI','dcc_duty_applied_UI',...
     'dcc_duty_residual_UI','sampler_offset_initial_codes','sampler_offset_applied_codes','sampler_offset_residual_codes',...
     'spare_offset_initial_UI','spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'};
 for k=1:numel(names), row.(names{k})=NaN; end
-row.ctle_requested_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_applied_dB=cfg.rxPma.lane.ctleBoost_dB;
+row.ctle_requested_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_target_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_applied_dB=cfg.rxPma.lane.ctleBoost_dB;
 row.ffe_current=sum(abs(cfg.txPma.lane.ffeCoeffs)); row.driver_gain_error=cfg.txPma.lane.gainError;
 row.driver_swing_calibrated=double(cfg.txPma.lane.enableSwingCalibration);
 row.rx_term_gain_initial=cfg.rxPma.lane.termGain; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
@@ -212,7 +217,7 @@ lane=r.model.rxPma.lane(1); cdr=lane.cdrTrace; applied=lane.afe.ctle.appliedBoos
 dm=r.model.txPma.lane(1).driver.dacMeta;
 row=defaultAdaptRow(state,cfg); row.objective=max(0,obj); row.disturbed_objective=disturbedObj; row.recovered_objective=recoveredObj;
 init=cfg.model.adaptation.initialError; row.control_changed=controlChanged; row.ctle_applied_dB=applied;
-row.ctle_initial_error_dB=init.ctle_dB; row.ctle_residual_dB=0;
+row.ctle_initial_error_dB=init.ctle_dB; row.ctle_residual_dB=abs(applied-row.ctle_target_dB);
 row.driver_gain_error=cfg.txPma.lane.gainError; row.tx_gain_residual=abs(cfg.txPma.lane.gainError);
 row.rx_term_gain_initial=rxInitial; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
 row.ffe_current=sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); row.driver_swing_calibrated=double(dm.swingCalibrated);
@@ -237,21 +242,23 @@ upper=zeros(n,1); for k=1:n, upper(k)=binomialUpper95(r.result.errCnt(k),r.resul
 metrics=table(lanes,r.result.errCnt(:),r.result.nMeasured(:),r.result.ber(:),repmat(cfg.link.seed,n,1),upper,...
     'VariableNames',{'lane','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
 metrics.mode=repmat(string(cfg.link.modulation),n,1); metrics.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,n,1);
-metrics.lane_context="lane"+string(lanes);
+metrics.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,n,1); metrics.lane_context="lane"+string(lanes); metrics.sample_bits=repmat(cfg.link.nBits,n,1);
 end
 
 function row=summaryRow(label,result,cfg)
 errors=sum(result.errCnt); measured=sum(result.nMeasured); ber=errors/max(measured,1);
 row=table(string(label),errors,measured,ber,cfg.link.seed,binomialUpper95(errors,measured),...
     'VariableNames',{'variant','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
-row.mode=string(cfg.link.modulation); row.rate_context_Gbps=cfg.paper.berRate_Gbps; row.lane_context="x8";
+row.mode=string(cfg.link.modulation); row.rate_context_Gbps=cfg.paper.berRate_Gbps; row.line_rate_Gbps=cfg.link.lineRate_Gbps;
+row.lane_context="x8"; row.sample_bits=cfg.link.nBits;
 end
 
 function row=metricVariant(label,result,cfg)
 errors=sum(result.errCnt); measured=sum(result.nMeasured); ber=errors/max(measured,1);
 row=table(string(label),errors,measured,ber,cfg.link.seed,binomialUpper95(errors,measured),...
     'VariableNames',{'variant','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
-row.mode=string(cfg.link.modulation); row.rate_context_Gbps=cfg.paper.berRate_Gbps; row.lane_context="x8";
+row.mode=string(cfg.link.modulation); row.rate_context_Gbps=cfg.paper.berRate_Gbps; row.line_rate_Gbps=cfg.link.lineRate_Gbps;
+row.lane_context="x8"; row.sample_bits=cfg.link.nBits;
 end
 
 function row=acResultRow(enabled,requested,r,cfg,applied)

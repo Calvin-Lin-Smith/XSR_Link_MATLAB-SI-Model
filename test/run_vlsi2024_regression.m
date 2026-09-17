@@ -61,7 +61,8 @@ for k=1:numel(values)
 end
 t=array2table(rows,'VariableNames',{'jitter_UI_rms','errors','measured_bits','empirical_BER','seed','ber_upper_95','sample_bits','sweep_context'});
 t.sweep_context=repmat("bounded x8 tolerance sweep; no silicon claim",height(t),1);
-t.mode=repmat(string(cfg.link.modulation),height(t),1); t.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(t),1); t.lane_context=repmat("x8",height(t),1);
+t.mode=repmat(string(cfg.link.modulation),height(t),1); t.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(t),1);
+t.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(t),1); t.lane_context=repmat("x8",height(t),1);
 writetable(t,fullfile(resultRoot,'jitter_tolerance.csv'));
 end
 
