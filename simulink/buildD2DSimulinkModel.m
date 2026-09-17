@@ -7,13 +7,20 @@ function model = buildD2DSimulinkModel(varargin)
 %     'ModelName'  Simulink model name without .slx
 %     'Open'       true/false, open the generated model
 %     'Save'       true/false, save the generated model
+%     'Config'     explicit d2dCfg struct (otherwise shared config is loaded)
+%     'ModelPath'  explicit .slx path (useful for isolated smoke tests)
+%     'Overwrite'  true/false; false protects an existing artifact
 root=fileparts(fileparts(mfilename('fullpath')));
-modelName='D2D_PHY_SI_Simulink'; openModel=true; saveModel=true;
+modelName='D2D_PHY_SI_Simulink'; openModel=true; saveModel=true; cfg=[]; modelPath=''; overwrite=true;
+if mod(numel(varargin),2)~=0, error('buildD2DSimulinkModel:Option','Use name/value options.'); end
 for k=1:2:numel(varargin)
-    switch lower(varargin{k})
+    switch lower(char(varargin{k}))
         case 'modelname', modelName=char(varargin{k+1});
         case 'open', openModel=logical(varargin{k+1});
         case 'save', saveModel=logical(varargin{k+1});
+        case 'config', cfg=varargin{k+1};
+        case 'modelpath', modelPath=char(varargin{k+1});
+        case 'overwrite', overwrite=logical(varargin{k+1});
         otherwise, error('buildD2DSimulinkModel:Option','Unknown option %s.',varargin{k});
     end
 end
@@ -21,11 +28,14 @@ if ~license('test','Simulink')
     error('buildD2DSimulinkModel:License','Simulink license is not available.');
 end
 addpath(genpath(fullfile(root,'src')));
-cfg=loadD2DSharedConfig(modelName);
-modelFile=fullfile(root,'simulink',[modelName '.slx']);
+if isempty(cfg), cfg=loadD2DSharedConfig(modelName); end
+validateattributes(cfg,{'struct'},{'scalar'});
+if isempty(modelPath), modelFile=fullfile(root,'simulink',[modelName '.slx']); else, modelFile=modelPath; end
+if saveModel && isfile(modelFile) && ~overwrite
+    error('buildD2DSimulinkModel:Overwrite','Refusing to overwrite existing model: %s',modelFile);
+end
 if bdIsLoaded(modelName), close_system(modelName,0); end
-if isfile(modelFile), delete(modelFile); end
-new_system(modelName); open_system(modelName);
+new_system(modelName); if openModel, open_system(modelName); end
 assignin('base','d2dCfg',cfg);
 assignin(get_param(modelName,'ModelWorkspace'),'d2dCfg',cfg);
 set_param(modelName,'Location',[80 80 1500 850]);
@@ -60,13 +70,13 @@ ann=[sprintf('D2D PHY visual model\n') ...
 add_block('built-in/Note',[modelName '/Architecture Note'],'Position',[450 30 920 85],'Name',ann);
 
 buildRawPcs([modelName '/Raw PCS']);
-buildTxPma([modelName '/TX PMA x8']);
-buildChannel([modelName '/Die-to-Die Channel x8']);
-buildRxPma([modelName '/RX PMA x8']);
+buildTxPma([modelName '/TX PMA x8'],cfg);
+buildChannel([modelName '/Die-to-Die Channel x8'],cfg);
+buildRxPma([modelName '/RX PMA x8'],cfg);
 buildResults([modelName '/BER_Results']);
 set_param(modelName,'SimulationCommand','update');
 if saveModel, save_system(modelName,modelFile); end
-if ~openModel, close_system(modelName,0); end
+if ~openModel && bdIsLoaded(modelName), close_system(modelName,0); end
 model=modelName;
 end
 
@@ -86,7 +96,7 @@ add_line(path,'dspPrbs_Pattern_Source/1','rxBits_probe/1');
 add_line(path,'dspPrbs_Pattern_Source/1','Out1/1');
 end
 
-function buildTxPma(path)
+function buildTxPma(path,cfg)
 setupSubsystem(path,1,1);
 add_block('simulink/Signal Routing/Demux',[path '/Lane Demux'],'Position',[75 55 80 425],'Outputs','8');
 add_block('simulink/Signal Routing/Mux',[path '/Lane Mux'],'Position',[500 55 505 425],'Inputs','8');
@@ -95,7 +105,7 @@ add_line(path,'In1/1','Lane Demux/1','autorouting','on');
 for j=1:8
     y=35+(j-1)*48; name=sprintf('TX Lane %d',j);
     add_block('simulink/Ports & Subsystems/Subsystem',[path '/' name],'Position',[145 y 365 y+34]);
-    buildLane([path '/' name],'tx',j);
+    buildLane([path '/' name],'tx',j,cfg);
     add_line(path,sprintf('Lane Demux/%d',j),sprintf('%s/1',name),'autorouting','on');
     add_line(path,sprintf('%s/1',name),sprintf('Lane Mux/%d',j),'autorouting','on');
 end
@@ -103,7 +113,7 @@ add_line(path,'TX Lane 1/1','TX pad probe/1','autorouting','on');
 add_line(path,'Lane Mux/1','Out1/1','autorouting','on');
 end
 
-function buildChannel(path)
+function buildChannel(path,cfg)
 setupSubsystem(path,1,1);
 add_block('simulink/Signal Routing/Demux',[path '/Channel Demux'],'Position',[75 55 80 425],'Outputs','8');
 add_block('simulink/Signal Routing/Mux',[path '/Channel Mux'],'Position',[500 55 505 425],'Inputs','8');
@@ -113,8 +123,7 @@ for j=1:8
     add_block('simulink/Ports & Subsystems/Subsystem',[path '/' name],'Position',[145 y 365 y+34]);
     setupSubsystem([path '/' name],1,1);
     add_block('simulink/User-Defined Functions/Interpreted MATLAB Function',[path '/' name '/dspChannel'],...
-        'Position',[80 105 260 145],'MATLABFcn',['dspChannel(u,d2dCfg.link.sps,' ...
-        'd2dCfg.channel.lossNyq_dB,d2dCfg.channel.poles)']);
+        'Position',[80 105 260 145],'MATLABFcn',channelCode(cfg));
     add_line([path '/' name],'In1/1','dspChannel/1'); add_line([path '/' name],'dspChannel/1','Out1/1');
     add_line(path,sprintf('Channel Demux/%d',j),sprintf('%s/1',name),'autorouting','on');
     add_line(path,sprintf('%s/1',name),sprintf('Channel Mux/%d',j),'autorouting','on');
@@ -122,7 +131,7 @@ end
 add_line(path,'Channel Mux/1','Out1/1','autorouting','on');
 end
 
-function buildRxPma(path)
+function buildRxPma(path,cfg)
 setupSubsystem(path,1,1);
 add_block('simulink/Signal Routing/Demux',[path '/Lane Demux'],'Position',[75 55 80 425],'Outputs','8');
 add_block('simulink/Signal Routing/Mux',[path '/Lane Mux'],'Position',[500 55 505 425],'Inputs','8');
@@ -130,26 +139,39 @@ add_line(path,'In1/1','Lane Demux/1','autorouting','on');
 for j=1:8
     y=35+(j-1)*48; name=sprintf('RX Lane %d',j);
     add_block('simulink/Ports & Subsystems/Subsystem',[path '/' name],'Position',[145 y 365 y+34]);
-    buildLane([path '/' name],'rx',j);
+    buildLane([path '/' name],'rx',j,cfg);
     add_line(path,sprintf('Lane Demux/%d',j),sprintf('%s/1',name),'autorouting','on');
     add_line(path,sprintf('%s/1',name),sprintf('Lane Mux/%d',j),'autorouting','on');
 end
 add_line(path,'Lane Mux/1','Out1/1','autorouting','on');
 end
 
-function buildLane(path,direction,index)
+function buildLane(path,direction,index,cfg)
 setupSubsystem(path,1,1);
 if strcmp(direction,'tx')
-    blocks={'FFE','Serializer','Driver'};
-    code={['dspFfe(u,d2dCfg.txPma.lane.txEqMain,d2dCfg.txPma.lane.txEqPre,' ...
-        'd2dCfg.txPma.lane.txEqPost,d2dCfg.txPma.lane.ffeNormalize)'],...
+    blocks={'FFE vector','Serializer','DAC / Driver'};
+    if isfield(cfg.txPma.lane,'ffeCoeffs')
+        ffeCode=['dspFfeVector(u,d2dCfg.txPma.lane.ffeCoeffs,d2dCfg.txPma.lane.ffeOffsets,' ...
+            'struct(''normalize'',d2dCfg.txPma.lane.ffeNormalize,''currentConstraint'',d2dCfg.txPma.lane.ffeCurrentConstraint))'];
+    else
+        ffeCode=['dspFfe(u,d2dCfg.txPma.lane.txEqMain,d2dCfg.txPma.lane.txEqPre,' ...
+            'd2dCfg.txPma.lane.txEqPost,d2dCfg.txPma.lane.ffeNormalize)'];
+    end
+    if isfield(cfg.txPma.lane,'targetSwing'), dacCode='d2dCfg.txPma.lane.targetSwing*u';
+    else, dacCode='d2dCfg.txPma.lane.amplitude*u'; end
+    code={ffeCode,...
         'repelem(u,d2dCfg.link.sps)',...
-        'd2dCfg.txPma.lane.amplitude*u'};
+        dacCode};
 else
-    blocks={'AFE_TERM','CTLE','Sampler','Slicer','Deserializer'};
-    code={'d2dCfg.rxPma.lane.termGain*u',...
+    blocks={'AFE TERM','AC pre','CTLE','AC post','Sampler roles','Sampler','Slicer','Deserializer'};
+    if isfield(cfg.rxPma.lane,'acPreCorner_UI'), acPreCode='dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPreCorner_UI)';
+    else, acPreCode='u'; end
+    if isfield(cfg.rxPma.lane,'acPostCorner_UI'), acPostCode='dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPostCorner_UI)';
+    else, acPostCode='u'; end
+    code={'d2dCfg.rxPma.lane.termGain*u',acPreCode,...
         ['dspCtle(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.ctleBoost_dB,' ...
         'd2dCfg.rxPma.lane.ctleFz)'],...
+        acPostCode,'u',...
         'dspSample(u,floor(d2dCfg.link.sps/2),0,d2dCfg.link.sps,0)',...
         'dspSlice(u,d2dCfg.link.modulation)','u'};
 end
@@ -159,6 +181,17 @@ for k=1:numel(blocks)
     add_block('simulink/User-Defined Functions/Interpreted MATLAB Function',full,'Position',[80+(k-1)*125 45 180+(k-1)*125 80],...
         'MATLABFcn',code{k});
     add_line(path,last,[safe '/1'],'autorouting','on'); last=[safe '/1'];
+end
+if strcmp(direction,'rx')
+    boundary=[path '/BB-CDR PI Adaptation'];
+    add_block('simulink/Ports & Subsystems/Subsystem',boundary,'Position',[80 230 300 285]);
+    setupSubsystem(boundary,1,1);
+    add_block('simulink/Discrete/Unit Delay',[boundary '/Stateful PI state'],...
+        'Position',[180 85 250 115],'InitialCondition','0');
+    add_line(boundary,'In1/1','Stateful PI state/1'); add_line(boundary,'Stateful PI state/1','Out1/1');
+    add_block('built-in/Note',[boundary '/Boundary note'],'Position',[80 135 310 180],...
+        'Name','Stateful BB-CDR / PI / adaptation boundary; core trace remains in dspBbCdr');
+    add_line(path,last,'BB-CDR PI Adaptation/1','autorouting','on'); last='BB-CDR PI Adaptation/1';
 end
 add_line(path,last,'Out1/1','autorouting','on');
 add_block('simulink/Signal Routing/Goto',[path '/white-box probe'],'Position',[80 105 180 135],...
@@ -173,6 +206,16 @@ add_block('simulink/User-Defined Functions/Interpreted MATLAB Function',[path '/
 add_block('simulink/Sinks/To Workspace',[path '/BER result'],'Position',[380 70 510 110],...
     'VariableName','simulinkBer','SaveFormat','Array');
 add_line(path,'In1/1','BER calculator/1'); add_line(path,'BER calculator/1','BER result/1'); add_line(path,'BER calculator/1','Out1/1');
+end
+
+function code=channelCode(cfg)
+if isfield(cfg.channel,'mode') && isfield(cfg.channel,'lossAtRef_dB')
+    code=['dspChannel(u,d2dCfg.link.sps,d2dCfg.channel.lossAtRef_dB,' ...
+        'd2dCfg.channel.poles,struct(''mode'',d2dCfg.channel.mode,''refFreq_GHz'',d2dCfg.channel.refFreq_GHz,' ...
+        '''baud_GBd'',d2dCfg.channel.baud_GBd,''lossAtRef_dB'',d2dCfg.channel.lossAtRef_dB))'];
+else
+    code='dspChannel(u,d2dCfg.link.sps,d2dCfg.channel.lossNyq_dB,d2dCfg.channel.poles)';
+end
 end
 
 function setMATLABCode(block,code)

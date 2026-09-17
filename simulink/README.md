@@ -42,4 +42,14 @@ buildD2DSimulinkModel('Open',false);
 buildD2DSimulinkModel('ModelName','MyD2DModel');
 ```
 
-Requirements: MATLAB Simulink license. The generated `.slx` is an additional artifact; it does not replace `D2DPHY`, `D2DWorkbench`, or the T1-T9 regression.
+For an isolated release-candidate smoke build, pass the same paper config and a temporary model name/path:
+
+```matlab
+cfg = phyConfig('vlsi2024_xsr');
+mdl = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
+    'Config',cfg,'Open',false,'Save',true,'Overwrite',false);
+```
+
+The builder preserves the legacy default model name, but only overwrites an existing `.slx` when `Overwrite` is true. The generated TX path uses vector FFE/DAC fields when present; the channel uses the calibrated analytic IL fields; RX exposes AC pre/post, CTLE, sampler-role and a stateful BB-CDR/PI/adaptation boundary. MATLAB remains the algorithm source of truth.
+
+Requirements: MATLAB Simulink license. The generated `.slx` is an additional artifact; it does not replace `D2DPHY`, `D2DWorkbench`, or the T1-T9 regression. All BER values remain finite-sample behavioral measurements with the profile's recorded assumptions and do not constitute silicon or paper BER sign-off.

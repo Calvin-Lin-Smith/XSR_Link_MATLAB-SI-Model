@@ -20,14 +20,14 @@ classdef D2DWorkbench < handle
         PostField
         StatusLabel
         ConfigPaths
+        ProfileDropDown
     end
 
     methods
         function app=D2DWorkbench(root)
             app.Root=root; app.Cfg=loadD2DSharedConfig();
             app.buildUi(); app.populateModelTree(); app.populateConfigTable();
-            syncD2DConfig(app.Cfg);
-            app.log('D2D PHY Workbench ready. GUI and Simulink share d2dCfg.');
+            app.log('D2D PHY Workbench ready. Preview a profile, then Apply + Sync explicitly.');
         end
 
         function buildUi(app)
@@ -50,12 +50,18 @@ classdef D2DWorkbench < handle
             cg.Padding=[8 8 8 8]; cg.RowSpacing=10;
             tabs=uitabgroup(cg); tabs.Layout.Row=1;
             cfgTab=uitab(tabs,'Title','Model Parameters');
-            cfgGrid=uigridlayout(cfgTab,[2 1]); cfgGrid.RowHeight={'1x',82};
+            cfgGrid=uigridlayout(cfgTab,[3 1]); cfgGrid.RowHeight={34,'1x',82};
             cfgGrid.Padding=[8 8 8 8]; cfgGrid.RowSpacing=8;
+            profileRow=uigridlayout(cfgGrid,[1 3]); profileRow.Layout.Row=1;
+            profileRow.ColumnWidth={100,'1x',130}; profileRow.Padding=[0 0 0 0]; profileRow.ColumnSpacing=8;
+            uilabel(profileRow,'Text','Paper profile','FontWeight','bold');
+            app.ProfileDropDown=uidropdown(profileRow,'Items',D2DWorkbench.profileNames(),...
+                'Value',D2DWorkbench.profileName(app.Cfg));
+            uibutton(profileRow,'Text','Load / Preview','ButtonPushedFcn',@(s,e)app.loadProfile());
             app.ConfigTable=uitable(cfgGrid,'ColumnName',{'Group','Parameter','Value'},...
                 'ColumnWidth',{95,230,130},'ColumnEditable',[false false true],...
                 'CellEditCallback',@(s,e)app.onConfigEdit(e));
-            btnRow=uigridlayout(cfgGrid,[2 3]); btnRow.Layout.Row=2;
+            btnRow=uigridlayout(cfgGrid,[2 3]); btnRow.Layout.Row=3;
             btnRow.ColumnWidth={'1x','1x','1x'}; btnRow.RowHeight={'1x','1x'};
             btnRow.Padding=[0 0 0 0]; btnRow.ColumnSpacing=8; btnRow.RowSpacing=6;
             uibutton(btnRow,'Text','Apply + Sync','FontWeight','bold','ButtonPushedFcn',@(s,e)app.applyConfigTable());
@@ -78,7 +84,7 @@ classdef D2DWorkbench < handle
             uilabel(tg,'Text','Note'); uilabel(tg,'Text','Sweep uses current model parameters and one lane.');
 
             tests=uipanel(cg,'Title','Test Actions','BackgroundColor',[1 1 1]); tests.Layout.Row=2;
-            bg=uigridlayout(tests,[3 3]); bg.RowHeight={'1x','1x','1x'};
+            bg=uigridlayout(tests,[4 3]); bg.RowHeight={'1x','1x','1x','1x'};
             bg.Padding=[8 8 8 8]; bg.RowSpacing=8; bg.ColumnSpacing=8;
             uibutton(bg,'Text','Loss Sweep','ButtonPushedFcn',@(s,e)app.runSweep('loss'));
             uibutton(bg,'Text','CTLE Sweep','ButtonPushedFcn',@(s,e)app.runSweep('ctle'));
@@ -87,6 +93,9 @@ classdef D2DWorkbench < handle
             uibutton(bg,'Text','FFE + CTLE Scan','ButtonPushedFcn',@(s,e)app.runEqScan());
             uibutton(bg,'Text','Behavior Suite','ButtonPushedFcn',@(s,e)app.runBehaviorSuite());
             uibutton(bg,'Text','Standard T1-T9','ButtonPushedFcn',@(s,e)app.runRegression());
+            uibutton(bg,'Text','Paper Baseline','ButtonPushedFcn',@(s,e)app.runPaperBaseline());
+            uibutton(bg,'Text','Paper Full Regression','ButtonPushedFcn',@(s,e)app.runPaperRegression());
+            uibutton(bg,'Text','Paper Adaptation','ButtonPushedFcn',@(s,e)app.runPaperAdaptation());
             uibutton(bg,'Text','Open Results Folder','ButtonPushedFcn',@(s,e)winopen(fullfile(app.Root,'results')));
             uibutton(bg,'Text','Clear Log','ButtonPushedFcn',@(s,e)set(app.LogArea,'Value',''));
 
@@ -143,13 +152,8 @@ classdef D2DWorkbench < handle
         end
 
         function populateConfigTable(app)
-            app.ConfigPaths={
-                'link.modulation','link.baud_Gbps','link.sps','link.nBits','link.skipUI','link.snr_dB',...
-                'link.rjUI_rms','link.djUI_pp','link.djFreq','link.cdrBw','link.seed',...
-                'rawPcs.pattern','rawPcs.errInject',...
-                'txPma.lane.txEqMain','txPma.lane.txEqPre','txPma.lane.txEqPost','txPma.lane.ffeNormalize','txPma.lane.amplitude',...
-                'channel.lossNyq_dB','channel.poles',...
-                'rxPma.lane.ctleBoost_dB','rxPma.lane.ctleFz','rxPma.lane.termGain','rxPma.lane.clockMode'};
+            paths=unique([D2DWorkbench.baseConfigPaths(),D2DWorkbench.paperConfigPaths()],'stable');
+            app.ConfigPaths=paths(cellfun(@(p)D2DWorkbench.hasNested(app.Cfg,strsplit(p,'.')),paths));
             data=cell(numel(app.ConfigPaths),3);
             for k=1:numel(app.ConfigPaths)
                 parts=strsplit(app.ConfigPaths{k},'.'); data{k,1}=parts{1}; data{k,2}=strjoin(parts(2:end),'.');
@@ -159,6 +163,12 @@ classdef D2DWorkbench < handle
         end
 
         function onConfigEdit(app,~), app.applyConfigTable(); end
+
+        function loadProfile(app)
+            app.Cfg=phyConfig(app.ProfileDropDown.Value); app.populateConfigTable();
+            app.log(['Loaded ' app.ProfileDropDown.Value ' for preview. Press Apply + Sync to publish it.']);
+        end
+
         function applyConfigTable(app)
             data=app.ConfigTable.Data;
             for k=1:numel(app.ConfigPaths)
@@ -170,17 +180,18 @@ classdef D2DWorkbench < handle
         end
 
         function resetConfig(app)
-            app.Cfg=phyConfig('ideal'); app.populateConfigTable(); syncD2DConfig(app.Cfg);
+            app.Cfg=phyConfig('ideal'); app.populateConfigTable(); app.ProfileDropDown.Value='ideal'; syncD2DConfig(app.Cfg);
             app.log('Configuration reset to ideal baseline and synchronized.');
         end
 
         function resetTypical(app)
-            app.Cfg=phyConfig('typical'); app.populateConfigTable(); syncD2DConfig(app.Cfg);
+            app.Cfg=phyConfig('typical'); app.populateConfigTable(); app.ProfileDropDown.Value='typical'; syncD2DConfig(app.Cfg);
             app.log('Configuration reset to typical profile and synchronized.');
         end
 
         function loadSharedConfig(app)
             app.Cfg=loadD2DSharedConfig(); app.populateConfigTable();
+            if ~isempty(app.ProfileDropDown), app.ProfileDropDown.Value=D2DWorkbench.profileName(app.Cfg); end
             app.log('Configuration loaded from the Simulink/shared d2dCfg workspace.');
         end
 
@@ -288,6 +299,34 @@ classdef D2DWorkbench < handle
             end
         end
 
+        function runPaperBaseline(app)
+            app.execute('paper baseline',@doRun);
+            function doRun()
+                o=run_vlsi2024_xsr('baseline',min(app.Cfg.link.nBits,2^18));
+                app.MetricsTable.Data=o.metrics; cla(app.Axes); app.log(sprintf('Paper baseline complete: BER %.3e.',o.result.aggregateBer));
+            end
+        end
+
+        function runPaperRegression(app)
+            app.execute('paper full regression',@doRun);
+            function doRun()
+                o=run_vlsi2024_regression('full',min(app.Cfg.link.nBits,2^18));
+                app.MetricsTable.Data=o.summary; cla(app.Axes); bar(app.Axes,double(o.summary.pass));
+                xticks(app.Axes,1:height(o.summary)); xticklabels(app.Axes,o.summary.stage); ylim(app.Axes,[0 1.2]);
+                title(app.Axes,'VLSI2024 XSR full regression'); grid(app.Axes,'on'); app.log('Paper full regression passed.');
+            end
+        end
+
+        function runPaperAdaptation(app)
+            app.execute('paper adaptation',@doRun);
+            function doRun()
+                o=run_vlsi2024_xsr('adaptation',min(app.Cfg.link.nBits,2^18));
+                app.MetricsTable.Data=o.stateTrace; cla(app.Axes); plot(app.Axes,o.stateTrace.objective,'-o');
+                xlabel(app.Axes,'State'); ylabel(app.Axes,'Decision-level margin'); title(app.Axes,'Paper adaptation trace'); grid(app.Axes,'on');
+                app.log('Paper adaptation trace complete.');
+            end
+        end
+
         function onTreeSelection(app,event)
             if isempty(event.SelectedNodes), return; end
             data=char(event.SelectedNodes.NodeData); app.log(['Selected model block: ' data]);
@@ -350,14 +389,41 @@ classdef D2DWorkbench < handle
                 case 'TX pad', x=app.Phy.txPma.lane(k).driver.txPad;
                 case 'Channel output', x=app.Phy.channel(k).out;
                 case 'RX TERM output', x=app.Phy.rxPma.lane(k).afe.termOut;
+                case 'RX AC pre', x=app.Phy.rxPma.lane(k).afe.acPreOut;
                 case 'RX CTLE raw', x=app.Phy.rxPma.lane(k).afe.ctleRaw;
+                case 'RX AC post', x=app.Phy.rxPma.lane(k).afe.acPostOut;
                 case 'RX CTLE output', x=app.Phy.rxPma.lane(k).afe.ctleOut;
+                case 'RX level-shifted samples', x=app.Phy.rxPma.lane(k).slicer.levelShiftedSamples; isWave=false;
                 case 'RX slicer samples', x=app.Phy.rxPma.lane(k).slicer.samples; isWave=false;
+                case 'RX data samples', x=app.Phy.rxPma.lane(k).dataSamples; isWave=false;
+                case 'RX edge samples', x=app.Phy.rxPma.lane(k).edgeSamples; isWave=false;
+                case 'RX edge detector', x=app.Phy.rxPma.lane(k).edgeDetectorOutput; isWave=false;
+                case 'RX spare samples', x=app.Phy.rxPma.lane(k).spareSamples; isWave=false;
                 case 'RX PLL input phase', x=app.Phy.rxPma.support.pll.log.in; isWave=false;
                 case 'RX PLL recovered phase', x=app.Phy.rxPma.support.pll.recoveredUI; isWave=false;
                 case 'RX PLL residual phase', x=app.Phy.rxPma.support.pll.residualUI; isWave=false;
+                case 'PI code', x=app.getTraceLane(k,'piCodeTrace'); isWave=false;
+                case 'CDR error', x=app.getTraceLane(k,'errorTrace'); isWave=false;
+                case 'CDR lock', x=app.getTraceLane(k,'cdr_lock_trace'); isWave=false;
+                case 'Adaptation objective', x=app.getArtifactTrace('adaptation_state_trace.csv','objective'); isWave=false;
+                case 'FFE tap trace', x=app.getArtifactTrace('adaptation_state_trace.csv','ffe_current'); isWave=false;
             end
             x=x(:);
+        end
+
+        function x=getTraceLane(app,k,name)
+            x=[];
+            if k<=numel(app.Phy.rxPma.lane)
+                trace=app.Phy.rxPma.lane(k).cdrTrace;
+                if isstruct(trace) && isfield(trace,name), x=trace.(name); end
+            end
+        end
+
+        function x=getArtifactTrace(app,fileName,column)
+            x=[]; f=fullfile(app.Root,'results','vlsi2024_xsr',fileName);
+            if isfile(f)
+                t=readtable(f); if any(strcmp(t.Properties.VariableNames,column)), x=t.(column); end
+            end
         end
 
         function [x,isWave]=getProbe(app,label)
@@ -367,12 +433,24 @@ classdef D2DWorkbench < handle
                 case 'TX lane 1 pad', x=app.Phy.txPma.lane(1).driver.txPad;
                 case 'Channel 1 output', x=app.Phy.channel(1).out;
                 case 'RX lane 1 TERM output', x=app.Phy.rxPma.lane(1).afe.termOut;
+                case 'RX AC pre', x=app.Phy.rxPma.lane(1).afe.acPreOut;
                 case 'RX lane 1 CTLE raw', x=app.Phy.rxPma.lane(1).afe.ctleRaw;
+                case 'RX AC post', x=app.Phy.rxPma.lane(1).afe.acPostOut;
                 case 'RX lane 1 CTLE output', x=app.Phy.rxPma.lane(1).afe.ctleOut;
+                case 'RX level-shifted samples', x=app.Phy.rxPma.lane(1).slicer.levelShiftedSamples; isWave=false;
                 case 'RX lane 1 slicer samples', x=app.Phy.rxPma.lane(1).slicer.samples; isWave=false;
+                case 'RX data samples', x=app.Phy.rxPma.lane(1).dataSamples; isWave=false;
+                case 'RX edge samples', x=app.Phy.rxPma.lane(1).edgeSamples; isWave=false;
+                case 'RX edge detector', x=app.Phy.rxPma.lane(1).edgeDetectorOutput; isWave=false;
+                case 'RX spare samples', x=app.Phy.rxPma.lane(1).spareSamples; isWave=false;
                 case 'RX PLL input phase', x=app.Phy.rxPma.support.pll.log.in; isWave=false;
                 case 'RX PLL recovered phase', x=app.Phy.rxPma.support.pll.recoveredUI; isWave=false;
                 case 'RX PLL residual phase', x=app.Phy.rxPma.support.pll.residualUI; isWave=false;
+                case 'PI code', x=app.getTraceLane(1,'piCodeTrace'); isWave=false;
+                case 'CDR error', x=app.getTraceLane(1,'errorTrace'); isWave=false;
+                case 'CDR lock', x=app.getTraceLane(1,'cdr_lock_trace'); isWave=false;
+                case 'Adaptation objective', x=app.getArtifactTrace('adaptation_state_trace.csv','objective'); isWave=false;
+                case 'FFE tap trace', x=app.getArtifactTrace('adaptation_state_trace.csv','ffe_current'); isWave=false;
             end
             x=x(:);
         end
@@ -393,10 +471,58 @@ classdef D2DWorkbench < handle
     end
 
     methods (Static)
+        function names=profileNames()
+            names={'ideal','typical','vlsi2024_xsr'};
+        end
+        function name=profileName(cfg)
+            if isfield(cfg,'paper') && isfield(cfg.paper,'id'), name='vlsi2024_xsr';
+            elseif isfield(cfg,'channel') && isfield(cfg.channel,'lossNyq_dB') && cfg.channel.lossNyq_dB==0, name='ideal';
+            else, name='typical';
+            end
+        end
+        function paths=baseConfigPaths()
+            paths={
+                'link.modulation','link.baud_Gbps','link.sps','link.nBits','link.skipUI','link.snr_dB',...
+                'link.rjUI_rms','link.djUI_pp','link.djFreq','link.cdrBw','link.seed',...
+                'rawPcs.pattern','rawPcs.errInject',...
+                'txPma.lane.txEqMain','txPma.lane.txEqPre','txPma.lane.txEqPost','txPma.lane.ffeNormalize','txPma.lane.amplitude',...
+                'channel.lossNyq_dB','channel.poles',...
+                'rxPma.lane.ctleBoost_dB','rxPma.lane.ctleFz','rxPma.lane.termGain','rxPma.lane.clockMode'};
+        end
+        function paths=paperConfigPaths()
+            paths={
+                'txPma.lane.ffeMode','txPma.lane.ffeOffsets','txPma.lane.ffeCoeffs',...
+                'txPma.lane.ffeNormalize','txPma.lane.ffeCurrentConstraint',...
+                'txPma.lane.enableDacQuantization','txPma.lane.dacLevels','txPma.lane.targetSwing',...
+                'txPma.lane.gainError','txPma.lane.enableSwingCalibration',...
+                'channel.mode','channel.refFreq_GHz','channel.baud_GBd','channel.lossAtRef_dB',...
+                'rxPma.lane.terminationMode','rxPma.lane.enableAcPre','rxPma.lane.enableAcPost',...
+                'rxPma.lane.acPreCorner_UI','rxPma.lane.acPostCorner_UI','rxPma.lane.acInitialState',...
+                'rxPma.lane.ctlePolicy','rxPma.lane.ctleBoost_dB','rxPma.lane.ctleGrid_dB','rxPma.lane.ctleAppliedBoost_dB',...
+                'rxPma.lane.enableAgc','rxPma.lane.samplerRoles.enabled','rxPma.lane.samplerRoles.quarterRateBranches',...
+                'rxPma.lane.samplerRoles.roleCounts.data','rxPma.lane.samplerRoles.roleCounts.edge',...
+                'rxPma.lane.samplerRoles.roleCounts.spare','rxPma.lane.samplerRoles.roleCounts.total',...
+                'rxPma.lane.samplerRoles.levelShiftCodes.data','rxPma.lane.samplerRoles.levelShiftCodes.edge',...
+                'rxPma.lane.samplerRoles.levelShiftCodes.spare','rxPma.lane.samplerRoles.samplerOffsetCodes',...
+                'rxPma.lane.samplerRoles.thresholdAssumptions',...
+                'model.enablePaperAdaptation','model.trainingMode','model.cdrOptions.nCodes',...
+                'model.cdrOptions.initialPhaseUI','model.cdrOptions.loopGainCodes','model.cdrOptions.loopBandwidthProxy',...
+                'model.cdrOptions.updateCadence','model.cdrOptions.lockWindow','model.cdrOptions.lockToleranceUI',...
+                'model.cdrOptions.mismatchBoundLSB','model.cdrOptions.mismatchSeed','model.cdrOptions.enabled',...
+                'model.cdrOptions.maxStepCodes'};
+        end
+        function tf=hasNested(s,parts)
+            tf=true; for k=1:numel(parts)
+                if ~isstruct(s) || ~isfield(s,parts{k}), tf=false; return; end
+                s=s.(parts{k});
+            end
+        end
         function items=probeItems()
             items={'TX FFE output','TX pad','Channel output','RX TERM output',...
-                'RX CTLE raw','RX CTLE output','RX slicer samples',...
-                'RX PLL input phase','RX PLL recovered phase','RX PLL residual phase'};
+                'RX AC pre','RX CTLE raw','RX AC post','RX CTLE output','RX level-shifted samples',...
+                'RX slicer samples','RX data samples','RX edge samples','RX edge detector','RX spare samples',...
+                'RX PLL input phase','RX PLL recovered phase','RX PLL residual phase',...
+                'PI code','CDR error','CDR lock','Adaptation objective','FFE tap trace'};
         end
         function items=laneItems()
             items={'Lane 1','Lane 2','Lane 3','Lane 4','Lane 5','Lane 6','Lane 7','Lane 8','All Lanes'};
@@ -408,7 +534,11 @@ classdef D2DWorkbench < handle
             if iscell(text), text=text{1}; end
             if ischar(old) || isstring(old), value=char(text);
             elseif islogical(old), value=any(strcmpi(strtrim(char(text)),{'true','1','on'}));
-            else, value=str2double(text); if isnan(value) && strcmpi(strtrim(char(text)),'inf'), value=inf; end
+            else
+                value=sscanf(strrep(char(text),',',' '),'%f').';
+                if isempty(value) && strcmpi(strtrim(char(text)),'inf'), value=inf; end
+                if isempty(value), value=old; end
+                if isscalar(old) && numel(value)==1, value=value(1); end
             end
         end
         function x=parseVector(text)

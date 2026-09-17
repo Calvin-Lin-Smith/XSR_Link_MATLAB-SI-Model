@@ -81,6 +81,16 @@ cfg = phyConfig('typical');  % 非理想、带 Channel loss / CTLE / jitter
 cfg = phyConfig('ideal');    % 理想验证基线，目标 BER = 0
 ```
 
+### VLSI2024 XSR paper profile
+
+```matlab
+cfg = phyConfig('vlsi2024_xsr');
+base = run_vlsi2024_xsr('baseline');
+full = run_vlsi2024_regression('full');
+```
+
+`baseline` 保存 paper-profile 的有限样本探针；`full` 还运行静态 FFE/CTLE、解析信道、有限 CDR/PI、适配和 fresh T1-T9。默认 `2^18` bits 只用于可复现行为证据，不能证明论文中的 `<1e-14/<1e-12` BER。
+
 ### 启动 MATLAB GUI
 
 ```matlab
@@ -140,6 +150,8 @@ GUI 中的操作：
 - **Load from SLX**：读取当前 Simulink Model Workspace 的配置并刷新 GUI。
 - **Reset Typical**：恢复典型非理想配置并同步。
 - **Reset Ideal**：恢复理想验证配置并同步。
+
+Paper profile 下先用 **Load / Preview** 选择 `ideal`、`typical` 或 `vlsi2024_xsr`；预览不会改写共享快照，确认后再点 **Apply + Sync**。Paper Baseline、Paper Full Regression 和 Paper Adaptation 按钮只调用现有 runner/regression。
 
 也可以从 MATLAB 命令行同步：
 
