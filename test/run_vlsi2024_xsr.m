@@ -340,6 +340,8 @@ if stageOptions.ctleTraining
         if abs(grid(k)-4.13)<1e-12, offGridCfg=ck; offGridR=rk; offGridObj=obj; end
         if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
     end
+else
+    ctleRows=zeros(0,11);
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
 if stageOptions.ffeTraining
@@ -393,13 +395,13 @@ init=cfg.model.adaptation.initialError; row.control_changed=controlChanged; row.
 row.ctle_initial_error_dB=init.ctle_dB; row.ctle_residual_dB=abs(applied-row.ctle_target_dB);
 row.driver_gain_error=cfg.txPma.lane.gainError; row.tx_gain_residual=abs(cfg.txPma.lane.gainError);
 row.rx_term_gain_initial=rxInitial; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
-row.ffe_current=sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); row.driver_swing_calibrated=double(dm.swingCalibrated);
+row.ffe_current=sum(abs(r.model.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); row.driver_swing_calibrated=double(getField(dm,'swingCalibrated',false));
 row.dll_phase_initial_UI=init.dllPhaseUI; row.dll_phase_applied_UI=cfg.model.cdrOptions.staticPhaseSkewUI; row.dll_phase_residual_UI=abs(row.dll_phase_applied_UI);
 row.dcc_duty_initial_UI=init.dccDutyUI; row.dcc_duty_applied_UI=cfg.model.cdrOptions.staticDutyCorrectionUI; row.dcc_duty_residual_UI=abs(row.dcc_duty_applied_UI);
 row.dll_phase_correction_UI=row.dll_phase_applied_UI; row.dcc_duty_correction_UI=row.dcc_duty_applied_UI;
 row.sampler_offset_initial_codes=init.samplerOffsetCodes; row.sampler_offset_applied_codes=cfg.rxPma.lane.samplerRoles.samplerOffsetCodes;
 row.sampler_offset_residual_codes=abs(row.sampler_offset_applied_codes); row.spare_offset_initial_UI=0.04; row.spare_offset_residual_UI=0.005;
-row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=dm.step; row.dac_clipped_samples=dm.clippedSamples;
+row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=getField(dm,'step',2/(cfg.txPma.lane.dacLevels-1)); row.dac_clipped_samples=getField(dm,'clippedSamples',NaN);
 end
 
 function obj=adaptObjective(p)

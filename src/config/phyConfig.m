@@ -105,13 +105,13 @@ switch profile
             cfg.paper.preset='VLSI Ideal';
             cfg.link.snr_dB=inf; cfg.link.rjUI_rms=0; cfg.link.djUI_pp=0;
             cfg.channel.lossAtRef_dB=0; cfg.channel.lossNyq_dB=0;
-            cfg.channel.lossSweep_dB=0;
+            cfg.channel.lossSweep_dB=zeros(size(cfg.channel.lossSweep_dB));
             cfg.txPma.lane.ffeCoeffs=[0 1 0]; cfg.txPma.lane.ffeNormalize=true;
             cfg.txPma.lane.sixTapPreset.coeffs=[0 0 1 0 0 0];
             cfg.txPma.lane.enableDacQuantization=false; cfg.txPma.lane.gainError=0;
             cfg.txPma.lane.enableSwingCalibration=true;
             cfg.rxPma.lane.enableAcPre=false; cfg.rxPma.lane.enableAcPost=false;
-            cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.ctleGrid_dB=0; cfg.rxPma.lane.ctleAppliedBoost_dB=0;
+            cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.ctleGrid_dB=zeros(size(cfg.rxPma.lane.ctleGrid_dB)); cfg.rxPma.lane.ctleAppliedBoost_dB=0;
             cfg.model.cdrOptions.mismatchBoundLSB=0; cfg.model.cdrOptions.mismatchSeed=0;
             cfg.model.cdrOptions.staticPhaseSkewUI=0; cfg.model.cdrOptions.staticDutyCorrectionUI=0;
             cfg.model.enablePaperAdaptation=false;
