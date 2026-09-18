@@ -35,8 +35,8 @@ switch profile
         cfg.txPma.lane.ffeNormalize=true;
         cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.clockMode='forwarded';
         cfg.channel.lossNyq_dB=0;
-    case 'vlsi2024_xsr'
-        cfg.paper.id='VLSI2024_XSR_3nm'; cfg.paper.mode='link_behavioral';
+    case {'vlsi2024_xsr','vlsi2024_xsr_typical','vlsi2024_xsr_ideal'}
+        cfg.paper.id='VLSI2024_XSR_3nm'; cfg.paper.preset='VLSI Typical'; cfg.paper.mode='link_behavioral';
         cfg.paper.rateRange_Gbps=[9.8 113]; cfg.paper.txEyeRate_Gbps=112.5;
         cfg.paper.berRate_Gbps=112; cfg.paper.headlineRate_Gbps=113;
         cfg.paper.rateContext=struct('range_Gbps',[9.8 113],'txEye_Gbps',112.5,...
@@ -76,6 +76,11 @@ switch profile
             'loopBandwidthProxy',1/64,'updateCadence',1,'lockWindow',32,'lockToleranceUI',0.08,...
             'mismatchBoundLSB',0.49,'mismatchSeed',202409,...
             'enabled',true,'maxStepCodes',2);
+        cfg.model.debugStages=struct('startupCalibration',true,'ctleTraining',true,'ffeTraining',true,...
+            'samplerCalibration',true,'clockTraining',true,'cdrEnabled',true,...
+            'startupCalibrationBudgetUI',64,'ctleTrainingBudgetUI',128,'ffeTrainingBudgetUI',128,...
+            'samplerCalibrationBudgetUI',64,'clockTrainingBudgetUI',64,'postLockWaitUI',16);
+        cfg.model.debugOptions=struct('postLockWaitUI',16);
         cfg.model.resultRoot='results/vlsi2024_xsr';
         cfg.paper.facts.packageTopology='2D/2.5D CoWoS';
         cfg.paper.facts.channelLength_mm=[1 80];
@@ -96,6 +101,21 @@ switch profile
         cfg.paper.assumptions.channelModel='calibrated analytic_il at 28 GHz; no real S-parameters';
         cfg.paper.assumptions.quotedEnergyScope='quoted only; not a model prediction';
         cfg.paper.assumptions.crosstalk='NEXT/FEXT facts recorded; MIMO crosstalk unmodeled';
+        if strcmp(profile,'vlsi2024_xsr_ideal')
+            cfg.paper.preset='VLSI Ideal';
+            cfg.link.snr_dB=inf; cfg.link.rjUI_rms=0; cfg.link.djUI_pp=0;
+            cfg.channel.lossAtRef_dB=0; cfg.channel.lossNyq_dB=0;
+            cfg.channel.lossSweep_dB=0;
+            cfg.txPma.lane.ffeCoeffs=[0 1 0]; cfg.txPma.lane.ffeNormalize=true;
+            cfg.txPma.lane.sixTapPreset.coeffs=[0 0 1 0 0 0];
+            cfg.txPma.lane.enableDacQuantization=false; cfg.txPma.lane.gainError=0;
+            cfg.txPma.lane.enableSwingCalibration=true;
+            cfg.rxPma.lane.enableAcPre=false; cfg.rxPma.lane.enableAcPost=false;
+            cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.ctleGrid_dB=0; cfg.rxPma.lane.ctleAppliedBoost_dB=0;
+            cfg.model.cdrOptions.mismatchBoundLSB=0; cfg.model.cdrOptions.mismatchSeed=0;
+            cfg.model.cdrOptions.staticPhaseSkewUI=0; cfg.model.cdrOptions.staticDutyCorrectionUI=0;
+            cfg.model.enablePaperAdaptation=false;
+        end
     otherwise
         error('phyConfig:Profile','Unknown configuration profile: %s',profile);
 end

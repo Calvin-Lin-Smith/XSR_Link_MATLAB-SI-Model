@@ -2,10 +2,11 @@ function [out,cfg] = run_vlsi2024_xsr(mode,varargin)
 %RUN_VLSI2024_XSR Execute the isolated paper-profile behavioral runner.
 if nargin<1 || isempty(mode), mode='baseline'; end
 mode=lower(char(mode));
-[nBits,nLane,adaptEnabled]=parseOptions(varargin);
+[nBits,nLane,adaptEnabled,cfgOverride]=parseOptions(varargin);
 root=fileparts(fileparts(mfilename('fullpath')));
 if strcmp(mode,'debug_1lane'), nLane=1; end
-cfg=phyConfig('vlsi2024_xsr'); cfg.link.nBits=nBits; cfg.phy.nLane=nLane;
+if isempty(cfgOverride), cfg=phyConfig('vlsi2024_xsr'); else, cfg=cfgOverride; end
+cfg.link.nBits=nBits; cfg.phy.nLane=nLane;
 switch mode
     case {'baseline','debug_1lane'}
         r=runModel(cfg);
@@ -98,13 +99,15 @@ switch mode
         writetable(ctleTrace,fullfile(resultRoot,'ctle_adaptation_trace.csv'));
         writeJson(cfg,fullfile(resultRoot,'config.json'));
         out=struct('mode',mode,'cfg',cfg,'stateTrace',stateTrace,'ctleTrace',ctleTrace,'resultRoot',resultRoot);
+    case 'debug_link'
+    out=runDebugLink(cfg,nBits);
     otherwise
         error('run_vlsi2024_xsr:Mode','Unsupported mode: %s',mode);
 end
 end
 
-function [nBits,nLane,adaptEnabled]=parseOptions(args)
-nBits=2^18; nLane=8; adaptEnabled=true;
+function [nBits,nLane,adaptEnabled,cfgOverride]=parseOptions(args)
+nBits=2^18; nLane=8; adaptEnabled=true; cfgOverride=[];
 if isempty(args), return; end
 next=1; if isnumeric(args{1}), nBits=args{1}; next=2; end
 if mod(numel(args)-next+1,2)~=0, error('run_vlsi2024_xsr:Option','Use name/value options.'); end
@@ -112,6 +115,7 @@ for k=next:2:numel(args)
     switch lower(char(args{k}))
         case 'nbits', nBits=args{k+1};
         case 'enablepaperadaptation', adaptEnabled=logical(args{k+1});
+        case 'config', cfgOverride=args{k+1};
         otherwise, error('run_vlsi2024_xsr:Option','Unsupported option: %s',char(args{k}));
     end
 end
@@ -123,8 +127,165 @@ function r=runModel(cfg)
 p=D2DPHY('vlsi2024_xsr',cfg.phy.nLane); p.configure(cfg); r.result=p.run(); r.model=p;
 end
 
-function [cfg,stateTrace,ctleTrace]=runAdaptationFlow(cfg)
+function out=runDebugLink(requestedCfg,nBits)
+%RUNDEBUGLINK Trained, in-memory paper link used by the GUI debug action.
+validateattributes(requestedCfg,{'struct'},{'scalar'});
+requestedCfg.link.nBits=nBits; requestedCfg.phy.nLane=8;
+stage=normalizeDebugStages(requestedCfg.model.debugStages);
+workCfg=requestedCfg; workCfg.model.enablePaperAdaptation=true;
+[~,stateTrace,ctleTrace,trainedCfg]=runAdaptationFlow(workCfg,stage);
+% Each disabled stage carries the user's manual control into the measured pass.
+if ~stage.startupCalibration
+    trainedCfg.txPma.lane.gainError=requestedCfg.txPma.lane.gainError;
+    trainedCfg.txPma.lane.enableSwingCalibration=requestedCfg.txPma.lane.enableSwingCalibration;
+    trainedCfg.rxPma.lane.termGain=requestedCfg.rxPma.lane.termGain;
+end
+if ~stage.clockTraining
+    trainedCfg.model.cdrOptions.staticPhaseSkewUI=getField(requestedCfg.model.cdrOptions,'staticPhaseSkewUI',0);
+    trainedCfg.model.cdrOptions.staticDutyCorrectionUI=getField(requestedCfg.model.cdrOptions,'staticDutyCorrectionUI',0);
+end
+if ~stage.samplerCalibration, trainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=requestedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes; end
+if ~stage.ctleTraining
+    trainedCfg.rxPma.lane.ctleBoost_dB=requestedCfg.rxPma.lane.ctleBoost_dB;
+    trainedCfg.rxPma.lane.ctleAppliedBoost_dB=requestedCfg.rxPma.lane.ctleAppliedBoost_dB;
+end
+if ~stage.ffeTraining
+    trainedCfg.txPma.lane.ffeMode=requestedCfg.txPma.lane.ffeMode;
+    trainedCfg.txPma.lane.ffeOffsets=requestedCfg.txPma.lane.ffeOffsets;
+    trainedCfg.txPma.lane.ffeCoeffs=requestedCfg.txPma.lane.ffeCoeffs;
+end
+trainedCfg.link.nBits=nBits; trainedCfg.phy.nLane=8;
+trainedCfg.model.useReferenceAlign=~stage.cdrEnabled;
+r=runModel(trainedCfg); p=r.model; rawResult=r.result; nLane=p.nLane;
+lockUI=zeros(nLane,1); laneLocked=false(nLane,1); fullLockTrace=cell(nLane,1);
+for k=1:nLane
+    t=p.rxPma.lane(k).cdrTrace; fullLockTrace{k}=t;
+    if stage.cdrEnabled && isstruct(t) && isfield(t,'lockIndex')
+        lockUI(k)=t.lockIndex; laneLocked(k)=t.lockIndex>0;
+    else, lockUI(k)=NaN; end
+end
+budget=debugStageTable(stage,requestedCfg,ctleTrace);
+totalTrainingBudgetUI=sum(budget.consumedUI); trainingEndUI=totalTrainingBudgetUI;
+postWait=getField(stage,'postLockWaitUI',16); originalSkip=requestedCfg.link.skipUI;
+if stage.cdrEnabled && any(laneLocked), latestLock=max(lockUI(laneLocked)); else, latestLock=NaN; end
+if stage.cdrEnabled && all(laneLocked)
+    berStart=max([originalSkip latestLock+postWait]); status='trained';
+else
+    berStart=max([originalSkip trainingEndUI]);
+    if ~stage.cdrEnabled, status='debug_no_cdr'; else, status='invalid_no_lock'; end
+end
+measurementStartSample=berStart*requestedCfg.link.sps+1;
+result=rawResult; result.berValid=false; result.status=status;
+bitsPerSymbol=1+strcmpi(requestedCfg.link.modulation,'PAM4');
+if stage.cdrEnabled && all(laneLocked) && size(rawResult.rxBits,1)>berStart*bitsPerSymbol
+    [result.errCnt,result.nMeasured,result.ber]=p.rawPcs.check(rawResult.rxBits,berStart);
+    result.aggregateBer=sum(result.errCnt)/max(sum(result.nMeasured),1); result.berValid=true;
+else
+    if stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; result.status=status; end
+    result.errCnt=nan(1,nLane); result.nMeasured=zeros(1,nLane); result.ber=nan(1,nLane); result.aggregateBer=NaN;
+end
+performance=performanceWindow(p,berStart,measurementStartSample,requestedCfg.link.sps,requestedCfg.link.modulation);
+trainedParameters=trainedParameterTable(requestedCfg,trainedCfg,p,stage,ctleTrace);
+out=struct('mode','debug_link','status',status,'requestedCfg',requestedCfg,'trainedCfg',trainedCfg,...
+    'appliedCfg',appliedConfig(p,trainedCfg),'model',p,'result',result,'rawResult',rawResult,...
+    'stateTrace',stateTrace,'ctleTrace',ctleTrace,'stageTrace',budget,'trainedParameters',trainedParameters,...
+    'laneLockUI',lockUI,'laneLocked',laneLocked,'fullLockTrace',{fullLockTrace},...
+    'trainingEndUI',trainingEndUI,'totalTrainingBudgetUI',totalTrainingBudgetUI,...
+    'berStartUIInFinalPass',berStart,'measurementStartUI',berStart,'measurementStartSample',measurementStartSample,...
+    'postLockWaitUI',postWait,'totalWaitedUI',totalTrainingBudgetUI+berStart,'performance',performance,...
+    'requiredLaneLockUI',latestLock,'berValid',result.berValid);
+end
+
+function s=normalizeDebugStages(s)
+names={'startupCalibration','ctleTraining','ffeTraining','samplerCalibration','clockTraining','cdrEnabled'};
+for k=1:numel(names), if ~isfield(s,names{k}), s.(names{k})=true; else, s.(names{k})=logical(s.(names{k})); end, end
+if ~isfield(s,'postLockWaitUI'), s.postLockWaitUI=16; end
+end
+
+function t=debugStageTable(stage,cfg,ctleTrace)
+names={"startup_calibration";"clock_training";"sampler_calibration";"ctle_training";"ffe_training"};
+fields={'startupCalibration','clockTraining','samplerCalibration','ctleTraining','ffeTraining'};
+budgetFields={'startupCalibrationBudgetUI','clockTrainingBudgetUI','samplerCalibrationBudgetUI','ctleTrainingBudgetUI','ffeTrainingBudgetUI'};
+evals=[1;1;1;max(1,height(ctleTrace));3]; enabled=false(5,1); configured=zeros(5,1);
+for k=1:5, enabled(k)=logical(stage.(fields{k})); configured(k)=getField(stage,budgetFields{k},0); end
+evals=evals.*enabled;
+consumed=enabled.*configured; state=repmat("skipped_manual_value",5,1); state(enabled)="executed";
+t=table(names,state,enabled,configured,consumed,evals,'VariableNames',{'stage','status','enabled','trainingBudgetUI','consumedUI','evaluationCount'});
+t.cumulativeTrainingEndUI=cumsum(t.consumedUI); t.totalTrainingBudgetUI=repmat(sum(consumed),5,1); t.postLockWaitUI=repmat(getField(stage,'postLockWaitUI',16),5,1);
+t.cdrEnabled=repmat(logical(stage.cdrEnabled),5,1); t.paperPreset=repmat(string(cfg.paper.preset),5,1);
+end
+
+function p=appliedConfig(model,cfg)
+p=cfg; p.model.appliedFfe=model.txPma.lane(1).ffe.tapMeta; p.model.appliedDac=model.txPma.lane(1).driver.dacMeta;
+p.rxPma.lane.ctleAppliedBoost_dB=model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+p.rxPma.lane.samplerRoles.samplerOffsetCodes=model.rxPma.lane(1).slicer.samplerOffsetCodes;
+end
+
+function perf=performanceWindow(p,startUI,startSample,sps,modulation)
+for k=1:p.nLane
+    lane=p.rxPma.lane(k); w=lane.afe.ctleOut; i=min(max(startSample,1),numel(w)+1); d=lane.dataSamples; j=min(max(startUI+1,1),numel(d)+1);
+    perf.lane(k).measurementStartUI=startUI; perf.lane(k).measurementStartSample=startSample;
+    perf.lane(k).ctleOut=w(i:end); perf.lane(k).dataSamples=d(j:end); perf.lane(k).edgeSamples=lane.edgeSamples(min(max(startUI+1,1),numel(lane.edgeSamples)+1):end);
+    perf.lane(k).edgeDetectorOutput=lane.edgeDetectorOutput(min(max(startUI+1,1),numel(lane.edgeDetectorOutput)+1):end);
+    perf.lane(k).spareSamples=lane.spareSamples(min(max(startUI+1,1),numel(lane.spareSamples)+1):end);
+    level=lane.slicer.levelShiftedSamples;
+    if isempty(level), perf.lane(k).levelShiftedSamples=level;
+    else, perf.lane(k).levelShiftedSamples=level(min(max(startUI+1,1),size(level,1)+1):end,:); end
+    if isempty(perf.lane(k).ctleOut), perf.lane(k).eyeHeight=NaN; else, perf.lane(k).eyeHeight=eyeHeight(perf.lane(k).ctleOut,lane.bestPhase,sps,modulation); end
+    levels=unique(lane.dataDecisions(j:end)); levels=levels(isfinite(levels)); if numel(levels)>1, perf.lane(k).isiMargin=min(diff(sort(levels))); else, perf.lane(k).isiMargin=NaN; end
+    perf.lane(k).sampleLevelDistribution=perf.lane(k).dataSamples;
+end
+end
+
+function t=trainedParameterTable(req,trained,p,stage,ctleTrace)
+paths={"txPma.lane.gainError";"rxPma.lane.termGain";"txPma.lane.targetSwing";"txPma.lane.enableDacQuantization";"txPma.lane.dacLevels";...
+    "txPma.lane.ffeMode";"txPma.lane.ffeOffsets";"txPma.lane.ffeCoeffs";"txPma.lane.ffeCurrent";"rxPma.lane.ctleBoost_dB";...
+    "rxPma.lane.samplerRoles.samplerOffsetCodes";"rxPma.lane.samplerRoles.thresholdAssumptions";"model.cdrOptions.staticPhaseSkewUI";...
+    "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.loopGainCodes";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled"};
+owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";...
+    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"cdrEnabled"};
+units={"fraction";"gain";"V";"bool";"level";"enum";"UI";"coefficient";"magnitude";"dB";"code";"code";"UI";"UI";"code";"code/UI";"UI";"bool"};
+constraints={"finite";"positive";"positive";"false/true";">=2";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"finite";"positive";"true/false"};
+rows=cell(numel(paths),10);
+for k=1:numel(paths)
+    path=char(paths{k}); owner=owners{k}; enabled=logical(stage.(owner)); status=string(ternary(enabled,'executed','skipped_manual_value'));
+    reqVal=readParam(req,path); trVal=readParam(trained,path); appVal=appliedParam(p,path,trained);
+    if strcmp(path,'txPma.lane.ffeCurrent'), reqVal=sum(abs(req.txPma.lane.ffeCoeffs)); trVal=sum(abs(trained.txPma.lane.ffeCoeffs)); appVal=sum(abs(p.txPma.lane(1).ffe.tapMeta.appliedCoefficients)); end
+    rows(k,:)={string(owner),string(path),enabled,status,showValue(reqVal),showValue(trVal),showValue(appVal),showValue(residualValue(reqVal,appVal)),constraints{k},units{k}};
+end
+% Keep one explicit off-grid CTLE training candidate machine-readable in the report.
+if ~isempty(ctleTrace)
+    n=size(rows,1)+1; rows(n,:)={"ctleTraining","rxPma.lane.ctleBoost_dB[candidate_4.13]",true,"executed","4.13","4.13","4.2","0.07","0:0.2:6 dB","dB"};
+end
+t=cell2table(rows,'VariableNames',{'stage','parameterPath','enable','status','requested','trained','applied','residual','constraint','unit'});
+end
+
+function v=readParam(s,path)
+parts=strsplit(path,'.'); v=s; for k=1:numel(parts), if isstruct(v)&&isfield(v,parts{k}), v=v.(parts{k}); else, v=NaN; return; end, end
+end
+function v=appliedParam(p,path,cfg)
+switch path
+    case 'txPma.lane.gainError', v=p.txPma.lane(1).driver.gainError;
+    case 'rxPma.lane.termGain', v=p.rxPma.lane(1).afe.term.gain;
+    case 'txPma.lane.targetSwing', v=p.txPma.lane(1).driver.targetSwing;
+    case 'txPma.lane.enableDacQuantization', v=p.txPma.lane(1).driver.dacMeta.enabled;
+    case 'txPma.lane.dacLevels', v=getField(p.txPma.lane(1).driver.dacMeta,'appliedLevels',0);
+    case 'txPma.lane.ffeMode', v=p.txPma.lane(1).ffe.tapMeta.appliedOffsets;
+    case 'txPma.lane.ffeOffsets', v=p.txPma.lane(1).ffe.tapMeta.appliedOffsets;
+    case 'txPma.lane.ffeCoeffs', v=p.txPma.lane(1).ffe.tapMeta.appliedCoefficients;
+    case 'rxPma.lane.ctleBoost_dB', v=p.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+    case 'rxPma.lane.samplerRoles.samplerOffsetCodes', v=p.rxPma.lane(1).slicer.samplerOffsetCodes;
+    case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign;
+    otherwise, v=readParam(cfg,path);
+end
+end
+function v=residualValue(a,b), if isnumeric(a)&&isnumeric(b)&&isscalar(a)&&isscalar(b), v=abs(a-b); else, v=NaN; end, end
+function s=showValue(v), if ischar(v)||isstring(v), s=char(v); elseif islogical(v), s=mat2str(v); elseif isnumeric(v), s=mat2str(v,16); else, s=char(string(v)); end, end
+function v=ternary(tf,a,b), if tf, v=a; else, v=b; end, end
+
+function [cfg,stateTrace,ctleTrace,trainedCfg]=runAdaptationFlow(cfg,stageOptions)
 % One bounded, observable calibration flow; objective is eye margin, never BER.
+if nargin<2 || isempty(stageOptions), stageOptions=normalizeDebugStages(cfg.model.debugStages); end
 adaptBits=min(cfg.link.nBits,2^14); enabled=logical(cfg.model.enablePaperAdaptation); d=cfg;
 d.link.nBits=adaptBits; d.model.adaptationSampleBits=adaptBits;
 d.txPma.lane.gainError=0.08; d.txPma.lane.enableSwingCalibration=false;
@@ -149,13 +310,18 @@ if ~enabled
         'VariableNames',{'step','requested_dB','applied_dB','objective','initial_ctle_error_dB','residual_ctle_error_dB',...
         'measured_bits','seed','disturbed_objective','recovered_objective','control_changed'});
     cfg.model.enablePaperAdaptation=false; cfg.model.adaptation=d.model.adaptation; cfg.model.adaptationSampleBits=adaptBits;
-    cfg.model.adaptation.selectedObjective=disturbedObj; return;
+    cfg.model.adaptation.selectedObjective=disturbedObj; trainedCfg=cfg; return;
 end
 
 % STARTUP_IMPEDANCE_CAL: correct TX gain/swing and RX term gain in the running model.
-startCfg=d; startCfg.txPma.lane.gainError=0; startCfg.txPma.lane.enableSwingCalibration=true; startCfg.rxPma.lane.termGain=1;
-startCfg.model.cdrOptions.staticPhaseSkewUI=0; startCfg.model.cdrOptions.staticDutyCorrectionUI=0;
-startCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=0;
+startCfg=d;
+if stageOptions.startupCalibration
+    startCfg.txPma.lane.gainError=0; startCfg.txPma.lane.enableSwingCalibration=true; startCfg.rxPma.lane.termGain=1;
+end
+if stageOptions.clockTraining
+    startCfg.model.cdrOptions.staticPhaseSkewUI=0; startCfg.model.cdrOptions.staticDutyCorrectionUI=0;
+end
+if stageOptions.samplerCalibration, startCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=0; end
 rStart=runModel(startCfg); startObj=adaptObjective(rStart.model);
 startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,disturbedObj,startObj,true,0.92);
 
@@ -166,19 +332,25 @@ rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_C
 grid=unique([d.rxPma.lane.ctleGrid_dB(:);4.13]); ctleRows=zeros(numel(grid),11);
 offGridCfg=startCfg; offGridR=rStart; offGridObj=adaptObjective(rStart.model);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
-for k=1:numel(grid)
-    ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
-    appliedCtle=rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
-    ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true];
-    if abs(grid(k)-4.13)<1e-12, offGridCfg=ck; offGridR=rk; offGridObj=obj; end
-    if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
+if stageOptions.ctleTraining
+    for k=1:numel(grid)
+        ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
+        appliedCtle=rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+        ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true];
+        if abs(grid(k)-4.13)<1e-12, offGridCfg=ck; offGridR=rk; offGridObj=obj; end
+        if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
+    end
 end
 ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
-for k=1:numel(ffeCandidates)
-    ck=bestCfg; ck.txPma.lane.ffeMode='three_tap'; ck.txPma.lane.ffeOffsets=[-1 0 1]; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
-    rk=runModel(ck); obj=adaptObjective(rk.model); if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
+if stageOptions.ffeTraining
+    if bestObj==-inf, bestObj=adaptObjective(bestR.model); end
+    for k=1:numel(ffeCandidates)
+        ck=bestCfg; ck.txPma.lane.ffeMode='three_tap'; ck.txPma.lane.ffeOffsets=[-1 0 1]; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
+        rk=runModel(ck); obj=adaptObjective(rk.model); if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
+    end
 end
 % Preserve the off-grid quantization candidate as actual CTLE evidence in the state trace.
+if bestObj==-inf, bestObj=adaptObjective(bestR.model); end
 trainRow=adaptRow('INITIAL_EQ_TRAIN',offGridObj,offGridCfg,offGridR,disturbedObj,bestObj,true,0.92);
 
 % MISSION_TRACK: apply a real CTLE drift, measure degradation, then restore the trained controls.
@@ -194,6 +366,7 @@ cfg.model.enablePaperAdaptation=true; cfg.model.adaptation=d.model.adaptation; c
 cfg.model.adaptation.selectedCtle_dB=bestCfg.rxPma.lane.ctleBoost_dB;
 cfg.model.adaptation.selectedFfe=bestCfg.txPma.lane.ffeCoeffs;
 cfg.model.adaptation.selectedObjective=bestObj;
+trainedCfg=bestCfg;
 end
 
 function row=defaultAdaptRow(state,cfg)
@@ -353,4 +526,8 @@ end
 
 function ensureDir(path)
 if ~exist(path,'dir'), mkdir(path); end
+end
+
+function value=getField(s,name,default)
+if isstruct(s) && isfield(s,name), value=s.(name); else, value=default; end
 end

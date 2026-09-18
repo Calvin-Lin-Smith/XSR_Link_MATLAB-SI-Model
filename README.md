@@ -8,7 +8,7 @@
 - 原生 MATLAB `uifigure` 参数与波形分析 GUI
 - 独立的 Simulink 可视化 block-diagram 实现
 - NRZ / PAM4、PRBS7 / PRBS15 / PRBS31、FFE、Channel、CTLE、采样、CDR 和 BER 分析
-- Loss、CTLE、RJ、CDR、FFE + CTLE 参数扫描
+- VLSI2024 XSR paper presets、trained x8 debug link、post-lock probes 和 paper evidence runners
 - T1-T9 自动化回归、眼图、bathtub、CSV / MAT / JSON / JUnit 结果输出
 - MATLAB GUI 与 Simulink 之间通过共享 `d2dCfg` 进行双向参数同步
 
@@ -98,13 +98,13 @@ addpath('gui');
 app = launchD2DWorkbench();
 ```
 
-GUI 包含三列工作区：
+GUI 包含三列 paper 工作区：
 
-1. **D2D IP Hierarchy**：查看 `D2DPHY -> Raw PCS -> TX PMA x8 -> Channel x8 -> RX PMA x8` 分层结构。
-2. **Configuration and Tests**：编辑模型参数，运行 link、sweep、behavior suite 和 T1-T9。
-3. **White-box Probes and Results**：查看 TX pad、Channel、CTLE、slicer、PLL 等内部节点，并选择单 lane 或 `All Lanes` 叠加显示。
+1. **VLSI2024 XSR hierarchy**：查看 paper-aligned `D2DPHY -> signed FFE/DAC -> analytic IL -> AC/CTLE/sampler -> BB-CDR/PI` 分层结构。
+2. **Paper configuration and actions**：编辑 paper 参数，选择 `VLSI Typical` / `VLSI Ideal`，运行 trained in-memory x8 debug 或现有 paper evidence runners。
+3. **Paper probes and results**：查看 TX FFE/DAC、Channel、AC/CTLE、sampler roles、PI/CDR/lock 与 post-lock performance，并选择单 lane 或 `All Lanes`。
 
-运行 x8 link 后，Metrics 表会显示 Aggregate 和每个 lane 的 BER、Errors、Measured bits、Best sampling phase、Delay UI、CTLE gain、Eye height，以及 Worst lane 日志。
+运行 x8 link 后，Metrics 表会显示每 lane lock 状态/lock UI、training end、BER start、waited UI、post-lock measured bits、CTLE gain 和 eye height；requested/trained/applied 参数在 debug 结果中分开保存。
 
 GUI 详细说明见 [`gui/README.md`](gui/README.md)。
 
@@ -147,11 +147,9 @@ Simulink 详细说明见 [`simulink/README.md`](simulink/README.md)。
 GUI 中的操作：
 
 - **Apply + Sync**：将当前 GUI 参数写入共享配置和 Simulink。
-- **Load from SLX**：读取当前 Simulink Model Workspace 的配置并刷新 GUI。
-- **Reset Typical**：恢复典型非理想配置并同步。
-- **Reset Ideal**：恢复理想验证配置并同步。
-
-Paper profile 下先用 **Load / Preview** 选择 `ideal`、`typical` 或 `vlsi2024_xsr`；预览不会改写共享快照，确认后再点 **Apply + Sync**。Paper Baseline、Paper Full Regression 和 Paper Adaptation 按钮只调用现有 runner/regression。
+- **Load from Simulink**：读取并验证 VLSI2024 XSR paper schema；打开 GUI 或运行 debug link 都不会写共享快照。
+- **VLSI Typical / VLSI Ideal**：只切换 paper preset 初值；后续单元编辑保留在 requested cfg。
+- **Run x8 Link**：执行离线训练、final x8 CDR acquisition 和统一 post-lock debug window，不覆盖正式 paper results。
 
 也可以从 MATLAB 命令行同步：
 
