@@ -48,7 +48,7 @@ classdef RxLane < Blk
                 phase=round(obj.manualPhaseUI*obj.cfg.sps); sc=struct('modulation',obj.cfg.modulation,'sps',obj.cfg.sps,...
                     'phase',phase,'delayUI',obj.manualDelayUI,'jitterUI',jitterUI);
                 if isfield(obj.cfg,'samplerRoles'), sc.samplerRoles=obj.cfg.samplerRoles; end
-                obj.slicer.configure(sc); bits=obj.deserializer.run(obj.slicer.run(y));
+                obj.slicer.configure(sc); bits=obj.deserializer.run(obj.slicer.run(y)); obj.bestPhase=mod(phase,obj.cfg.sps); obj.delayUI=obj.manualDelayUI;
                 obj.cdrTrace=struct('enabled',false,'trainingMode','fixed_manual_phase','manualPhaseUI',obj.manualPhaseUI,...
                     'manualDelayUI',obj.manualDelayUI,'lockIndex',NaN,'cdr_lock_trace',false(size(obj.slicer.dataSamples)));
             else

@@ -387,9 +387,21 @@ classdef D2DWorkbench < handle
                 elseif any(strcmp(token,{'false','0','off'})), value=false;
                 else, error('logical value must be true/false'); end
             else
-                value=sscanf(strrep(strrep(text,',',' '),'[',' '),'%f').';
-                if isempty(value) && strcmpi(strtrim(text),'inf'), value=inf; end
-                if isempty(value), error('numeric value required'); end
+                numericText=strtrim(text); wrapped=startsWith(numericText,'[')||endsWith(numericText,']');
+                if wrapped
+                    if ~(startsWith(numericText,'[')&&endsWith(numericText,']')), error('numeric vector brackets are incomplete'); end
+                    numericText=strtrim(numericText(2:end-1));
+                end
+                if strcmpi(numericText,'inf'), value=inf;
+                else
+                    if isempty(numericText), error('numeric value required'); end
+                    tokens=regexp(numericText,'[,\s]+','split');
+                    value=zeros(1,numel(tokens)); pattern='^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$';
+                    for j=1:numel(tokens)
+                        if isempty(regexp(tokens{j},pattern,'once')), error('numeric value has invalid trailing text'); end
+                        value(j)=str2double(tokens{j});
+                    end
+                end
                 if isscalar(old)&&numel(value)==1, value=value(1); end
             end
         end
@@ -400,12 +412,15 @@ classdef D2DWorkbench < handle
         function validateValue(path,value,old)
             if isnumeric(value)
                 if isempty(value)||any(isnan(value(:)))||any(~isfinite(value(:)) & ~strcmp(path,'link.snr_dB')), error('numeric value is not finite'); end
-                if any(contains(path,{'nBits','sps','nCodes','lockWindow','updateCadence','dacLevels','quarterRateBranches'})) && ...
+                if any(contains(path,{'nBits','sps','skipUI','nCodes','lockWindow','updateCadence','dacLevels','quarterRateBranches'})) && ...
                         (~isscalar(value)||value<=0||value~=fix(value)), error('integer value required'); end
                 if contains(path,'Offsets') && any(value~=fix(value)), error('tap offsets must be signed integers'); end
                 if contains(path,'ffeOffsets') && (numel(unique(value))~=numel(value) || ~any(value==0)), error('FFE offsets must be unique and include zero'); end
                 if contains(path,'ctleBoost') && (value<0 || value>6), error('CTLE boost must be within 0 to 6 dB'); end
                 if contains(path,'lossAtRef') && value<0, error('analytic IL must be nonnegative'); end
+                if strcmp(path,'model.cdrOptions.initialPhaseUI') && (~isscalar(value)||value<0||value>1), error('manual/initial phase must be in [0,1] UI'); end
+                if strcmp(path,'txPma.lane.gainError') && (~isscalar(value)||abs(value)>1), error('TX gain error must be within +/-1'); end
+                if strcmp(path,'model.cdrOptions.loopGainCodes') && (~isscalar(value)||value<0), error('CDR loop gain must be nonnegative'); end
                 if contains(path,'BudgetUI') && (~isscalar(value)||value<0||value~=fix(value)), error('UI budget must be a nonnegative integer'); end
                 if strcmp(path,'model.cdrOptions.nCodes') && (~isscalar(value)||value<2||value~=fix(value)), error('PI code count must be an integer >= 2'); end
                 if contains(path,'thresholdAssumptions') && numel(value)~=3, error('PAM4 requires three thresholds'); end

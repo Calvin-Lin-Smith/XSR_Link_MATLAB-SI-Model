@@ -176,22 +176,33 @@ else
     if ~stage.cdrEnabled, status='debug_no_cdr'; else, status='invalid_no_lock'; end
 end
 measurementStartSample=berStart*requestedCfg.link.sps+1;
-result=rawResult; result.berValid=false; result.status=status;
 bitsPerSymbol=1+strcmpi(requestedCfg.link.modulation,'PAM4');
+sentinel=getField(requestedCfg.model.debugOptions,'preLockSentinel',NaN);
+if isfinite(sentinel)
+    for k=1:nLane
+        wave=p.rxPma.lane(k).afe.ctleOut; nSent=min(max(measurementStartSample-1,0),numel(wave));
+        if nSent>0, wave(1:nSent)=sentinel; p.rxPma.lane(k).afe.ctleOut=wave; end
+        nSymSent=min(max(berStart,0),numel(p.rxPma.lane(k).dataSamples));
+        if nSymSent>0
+            p.rxPma.lane(k).dataSamples(1:nSymSent)=sentinel;
+            if ~isempty(p.rxPma.lane(k).edgeSamples), p.rxPma.lane(k).edgeSamples(1:min(nSymSent,numel(p.rxPma.lane(k).edgeSamples)))=sentinel; end
+            if ~isempty(p.rxPma.lane(k).edgeDetectorOutput), p.rxPma.lane(k).edgeDetectorOutput(1:min(nSymSent,numel(p.rxPma.lane(k).edgeDetectorOutput)))=sentinel; end
+            if ~isempty(p.rxPma.lane(k).spareSamples), p.rxPma.lane(k).spareSamples(1:min(nSymSent,numel(p.rxPma.lane(k).spareSamples)))=sentinel; end
+            level=p.rxPma.lane(k).slicer.levelShiftedSamples; if ~isempty(level), level(1:min(nSymSent,size(level,1)),:)=sentinel; p.rxPma.lane(k).slicer.levelShiftedSamples=level; end
+        end
+    end
+    nBitsSent=min(berStart*bitsPerSymbol,size(rawResult.rxBits,1));
+    if nBitsSent>0, rawResult.rxBits(1:nBitsSent,1)=1-rawResult.rxBits(1:nBitsSent,1); end
+    [rawResult.errCnt,rawResult.nMeasured,rawResult.ber]=p.rawPcs.check(rawResult.rxBits,originalSkip);
+    rawResult.aggregateBer=sum(rawResult.errCnt)/max(sum(rawResult.nMeasured),1);
+end
+result=rawResult; result.berValid=false; result.status=status;
 if stage.cdrEnabled && all(laneLocked) && size(rawResult.rxBits,1)>berStart*bitsPerSymbol
     [result.errCnt,result.nMeasured,result.ber]=p.rawPcs.check(rawResult.rxBits,berStart);
     result.aggregateBer=sum(result.errCnt)/max(sum(result.nMeasured),1); result.berValid=true;
 else
     if stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; result.status=status; end
     result.errCnt=nan(1,nLane); result.nMeasured=zeros(1,nLane); result.ber=nan(1,nLane); result.aggregateBer=NaN;
-end
-sentinel=getField(requestedCfg.model.debugOptions,'preLockSentinel',NaN);
-if isfinite(sentinel)
-    for k=1:nLane
-        wave=p.rxPma.lane(k).afe.ctleOut; nSent=min(max(measurementStartSample-1,0),numel(wave));
-        if nSent>0, wave(1:nSent)=sentinel; p.rxPma.lane(k).afe.ctleOut=wave; end
-    end
-    nBitsSent=min(berStart*bitsPerSymbol,size(rawResult.rxBits,1)); if nBitsSent>0, rawResult.rxBits(1:nBitsSent,1)=1-rawResult.rxBits(1:nBitsSent,1); end
 end
 performance=performanceWindow(p,berStart,measurementStartSample,requestedCfg.link.sps,requestedCfg.link.modulation);
 trainedParameters=trainedParameterTable(requestedCfg,trainedCfg,p,stage,ctleTrace);
@@ -229,8 +240,19 @@ t.cdrEnabled=repmat(logical(stage.cdrEnabled),5,1); t.paperPreset=repmat(string(
 end
 
 function p=appliedConfig(model,cfg)
-p=cfg; p.model.appliedFfe=model.txPma.lane(1).ffe.tapMeta; p.model.appliedDac=model.txPma.lane(1).driver.dacMeta;
+p=cfg; ffe=model.txPma.lane(1).ffe.tapMeta; dac=model.txPma.lane(1).driver.dacMeta;
+p.txPma.lane.ffeMode=cfg.txPma.lane.ffeMode; p.txPma.lane.ffeOffsets=ffe.appliedOffsets;
+p.txPma.lane.ffeCoeffs=ffe.appliedCoefficients; p.txPma.lane.ffeCurrentConstraint=ffe.appliedCurrentConstraint;
+p.txPma.lane.dacLevels=getField(dac,'appliedLevels',model.txPma.lane(1).driver.dacLevels);
+p.txPma.lane.targetSwing=model.txPma.lane(1).driver.targetSwing; p.txPma.lane.gainError=model.txPma.lane(1).driver.gainError;
+p.txPma.lane.enableDacQuantization=getField(dac,'enabled',model.txPma.lane(1).driver.enableDacQuantization);
+p.txPma.lane.enableSwingCalibration=getField(dac,'swingCalibrated',model.txPma.lane(1).driver.enableSwingCalibration);
+p.rxPma.lane.termGain=model.rxPma.lane(1).afe.term.gain; p.rxPma.lane.terminationMode=model.rxPma.lane(1).afe.terminationMode;
+p.rxPma.lane.ctleBoost_dB=model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
 p.rxPma.lane.ctleAppliedBoost_dB=model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
+p.model.appliedFfe=ffe; p.model.appliedDac=dac;
+p.model.useReferenceAlign=false; p.model.useManualPhase=~model.rxPma.lane(1).cdrTrace.enabled;
+p.model.cdrOptions.enabled=~p.model.useManualPhase;
 p.rxPma.lane.samplerRoles.samplerOffsetCodes=model.rxPma.lane(1).slicer.samplerOffsetCodes;
 end
 
@@ -254,12 +276,13 @@ function t=trainedParameterTable(req,trained,p,stage,ctleTrace)
 paths={"rxPma.lane.terminationMode";"rxPma.lane.termGain";"txPma.lane.gainError";"txPma.lane.targetSwing";"txPma.lane.enableDacQuantization";"txPma.lane.dacLevels";"txPma.lane.enableSwingCalibration";...
     "txPma.lane.ffeMode";"txPma.lane.ffeOffsets";"txPma.lane.ffeCoeffs";"txPma.lane.ffeCurrent";"rxPma.lane.ctlePolicy";"rxPma.lane.ctleBoost_dB";...
     "rxPma.lane.samplerRoles.samplerOffsetCodes";"rxPma.lane.samplerRoles.thresholdAssumptions";"model.cdrOptions.staticPhaseSkewUI";...
-    "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.loopBandwidthProxy";...
+    "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.initialPhaseUI";"model.cdrOptions.loopGainCodes";...
+    "model.cdrOptions.enabled";"model.cdrOptions.maxStepCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.loopBandwidthProxy";...
     "model.cdrOptions.updateCadence";"model.cdrOptions.lockToleranceUI";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled";"model.debugStages.postLockWaitUI"};
 owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";"ctleTraining";...
-    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled"};
-units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"LSB";"code/UI";"count";"UI";"UI";"bool";"UI"};
-constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,0.5)";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
+    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled"};
+units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"UI";"code";"bool";"code";"LSB";"code/UI";"count";"UI";"UI";"bool";"UI"};
+constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,1] UI";"nonnegative";"true/false";"positive";"[0,0.5)";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
 rows=cell(numel(paths),10);
 for k=1:numel(paths)
     path=char(paths{k}); owner=owners{k}; enabled=logical(stage.(owner)); status=string(ternary(enabled,'executed','skipped_manual_value'));
@@ -294,6 +317,7 @@ switch path
     case 'rxPma.lane.samplerRoles.samplerOffsetCodes', v=p.rxPma.lane(1).slicer.samplerOffsetCodes;
     case 'rxPma.lane.samplerRoles.thresholdAssumptions', v=p.rxPma.lane(1).slicer.comparatorThresholds;
     case 'model.cdrOptions.mismatchBoundLSB', v=appliedMismatch(p,cfg);
+    case 'model.cdrOptions.enabled', v=~p.rxPma.lane(1).useManualPhase && ~p.rxPma.lane(1).useReferenceAlign;
     case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign && ~p.rxPma.lane(1).useManualPhase;
     otherwise, v=readParam(cfg,path);
 end

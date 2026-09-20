@@ -164,9 +164,11 @@ if strcmp(direction,'tx')
         dacCode};
 else
     blocks={'AFE TERM','AC pre','CTLE','AC post','Sampler roles','Sampler','Slicer','Deserializer'};
-    if isfield(cfg.rxPma.lane,'acPreCorner_UI'), acPreCode='dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPreCorner_UI)';
+    if isfield(cfg.rxPma.lane,'acPreCorner_UI') && isfield(cfg.rxPma.lane,'terminationMode'), acPreCode=['dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPreCorner_UI,' ...
+            'struct(''enabled'',d2dCfg.rxPma.lane.enableAcPre && strcmpi(char(d2dCfg.rxPma.lane.terminationMode),''AC'')))'];
     else, acPreCode='u'; end
-    if isfield(cfg.rxPma.lane,'acPostCorner_UI'), acPostCode='dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPostCorner_UI)';
+    if isfield(cfg.rxPma.lane,'acPostCorner_UI') && isfield(cfg.rxPma.lane,'terminationMode'), acPostCode=['dspAcCouple(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.acPostCorner_UI,' ...
+            'struct(''enabled'',d2dCfg.rxPma.lane.enableAcPost && strcmpi(char(d2dCfg.rxPma.lane.terminationMode),''AC'')))'];
     else, acPostCode='u'; end
     code={'d2dCfg.rxPma.lane.termGain*u',acPreCode,...
         ['dspCtle(u,d2dCfg.link.sps,d2dCfg.rxPma.lane.ctleBoost_dB,' ...
