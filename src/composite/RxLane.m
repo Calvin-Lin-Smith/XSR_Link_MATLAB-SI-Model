@@ -13,6 +13,9 @@ classdef RxLane < Blk
         spareSamples = []
         spareMonitorOutput = []
         useReferenceAlign = true
+        useManualPhase = false
+        manualPhaseUI = 0.5
+        manualDelayUI = 0
         cdrOptions = struct()
         cdrTrace = struct()
     end
@@ -24,6 +27,9 @@ classdef RxLane < Blk
         function configure(obj,c)
             configure@Blk(obj,c); obj.afe.configure(c);
             obj.useReferenceAlign=true; if isfield(c,'useReferenceAlign'), obj.useReferenceAlign=logical(c.useReferenceAlign); end
+            obj.useManualPhase=false; if isfield(c,'useManualPhase'), obj.useManualPhase=logical(c.useManualPhase); end
+            if isfield(c,'manualPhaseUI'), obj.manualPhaseUI=c.manualPhaseUI; end
+            if isfield(c,'manualDelayUI'), obj.manualDelayUI=c.manualDelayUI; end
             obj.cdrOptions=struct(); if isfield(c,'cdrOptions'), obj.cdrOptions=c.cdrOptions; end
             sc=struct('modulation',c.modulation,'sps',c.sps,'phase',floor(c.sps/2),'delayUI',0,'jitterUI',0);
             if isfield(c,'samplerRoles'), sc.samplerRoles=c.samplerRoles; end
@@ -38,6 +44,13 @@ classdef RxLane < Blk
                 if isfield(obj.cfg,'samplerRoles'), sc.samplerRoles=obj.cfg.samplerRoles; end
                 obj.slicer.configure(sc); bits=obj.deserializer.run(obj.slicer.run(y));
                 obj.cdrTrace=struct('enabled',false,'trainingMode','legacy_reference_align');
+            elseif obj.useManualPhase
+                phase=round(obj.manualPhaseUI*obj.cfg.sps); sc=struct('modulation',obj.cfg.modulation,'sps',obj.cfg.sps,...
+                    'phase',phase,'delayUI',obj.manualDelayUI,'jitterUI',jitterUI);
+                if isfield(obj.cfg,'samplerRoles'), sc.samplerRoles=obj.cfg.samplerRoles; end
+                obj.slicer.configure(sc); bits=obj.deserializer.run(obj.slicer.run(y));
+                obj.cdrTrace=struct('enabled',false,'trainingMode','fixed_manual_phase','manualPhaseUI',obj.manualPhaseUI,...
+                    'manualDelayUI',obj.manualDelayUI,'lockIndex',NaN,'cdr_lock_trace',false(size(obj.slicer.dataSamples)));
             else
                 cdrOpts=obj.cdrOptions; cdrOpts.jitterUI=jitterUI; cdrOpts.samplerOffsetCodes=0;
                 if isfield(obj.cfg,'samplerRoles') && isfield(obj.cfg.samplerRoles,'samplerOffsetCodes')

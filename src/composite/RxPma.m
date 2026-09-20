@@ -18,6 +18,9 @@ classdef RxPma < Blk
             lc.useReferenceAlign=true;
             if nargin>=4 && isstruct(model)
                 if isfield(model,'useReferenceAlign'), lc.useReferenceAlign=logical(model.useReferenceAlign); end
+                if isfield(model,'useManualPhase'), lc.useManualPhase=logical(model.useManualPhase); end
+                if isfield(model,'manualPhaseUI'), lc.manualPhaseUI=model.manualPhaseUI; end
+                if isfield(model,'manualDelayUI'), lc.manualDelayUI=model.manualDelayUI; end
                 if isfield(model,'cdrOptions'), lc.cdrOptions=model.cdrOptions; end
             end
             for j=1:obj.nLane, obj.lane(j).configure(lc); end

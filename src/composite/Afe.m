@@ -16,6 +16,7 @@ classdef Afe < Blk
         acPostCorner_UI = 0.01
         acInitialState = 'steady_state'
         enableAgc = true
+        terminationMode = 'AC'
     end
     methods
         function obj=Afe(name)
@@ -25,6 +26,8 @@ classdef Afe < Blk
         function configure(obj,c)
             configure@Blk(obj,c);
             obj.term.configure(struct('gain',c.termGain));
+            obj.terminationMode='AC'; if isfield(c,'terminationMode'), obj.terminationMode=upper(char(c.terminationMode)); end
+            if ~any(strcmp(obj.terminationMode,{'AC','DC'})), error('Afe:TerminationMode','terminationMode must be AC or DC.'); end
             obj.enableAcPre=false; obj.enableAcPost=false; obj.acInitialState='steady_state'; obj.enableAgc=true;
             if isfield(c,'enableAcPre'), obj.enableAcPre=logical(c.enableAcPre); end
             if isfield(c,'enableAcPost'), obj.enableAcPost=logical(c.enableAcPost); end
@@ -38,9 +41,9 @@ classdef Afe < Blk
         end
         function y=run(obj,x)
             obj.termOut=obj.term.run(x); obj.acPreOut=obj.termOut;
-            if obj.enableAcPre, obj.acPreOut=dspAcCouple(obj.termOut,obj.cfg.sps,obj.acPreCorner_UI,obj.acInitialState); end
+            if obj.enableAcPre && strcmp(obj.terminationMode,'AC'), obj.acPreOut=dspAcCouple(obj.termOut,obj.cfg.sps,obj.acPreCorner_UI,obj.acInitialState); end
             raw=obj.ctle.run(obj.acPreOut); obj.ctleRaw=raw; obj.acPostOut=raw;
-            if obj.enableAcPost, obj.acPostOut=dspAcCouple(raw,obj.cfg.sps,obj.acPostCorner_UI,obj.acInitialState); end
+            if obj.enableAcPost && strcmp(obj.terminationMode,'AC'), obj.acPostOut=dspAcCouple(raw,obj.cfg.sps,obj.acPostCorner_UI,obj.acInitialState); end
             if obj.enableAgc
                 den=max(rms(raw),eps); obj.agcGain=rms(obj.termOut)/den;
             else

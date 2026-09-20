@@ -67,6 +67,39 @@ assert(manual.trainedCfg.rxPma.lane.ctleBoost_dB==5);
 ctleRow=strcmp(string(manual.stageTrace.stage),'ctle_training');
 assert(strcmp(string(manual.stageTrace.status(ctleRow)),'skipped_manual_value'));
 assert(manual.stageTrace.consumedUI(ctleRow)==0);
+cfgRequested=phyConfig('vlsi2024_xsr_typical'); cfgRequested.link.nBits=256; cfgRequested.channel.lossAtRef_dB=2; cfgRequested.model.enablePaperAdaptation=false;
+[requestedOut,~]=run_vlsi2024_xsr('debug_link',256,'Config',cfgRequested);
+assert(requestedOut.requestedCfg.channel.lossAtRef_dB==2 && requestedOut.trainedCfg.channel.lossAtRef_dB==2 && requestedOut.appliedCfg.channel.lossAtRef_dB==2);
+assert(~requestedOut.requestedCfg.model.enablePaperAdaptation && ~requestedOut.trainedCfg.model.enablePaperAdaptation && ~requestedOut.appliedCfg.model.enablePaperAdaptation);
+assert(~requestedOut.trainedCfg.model.useReferenceAlign);
+cfgSent=cfgRequested; cfgSent.model.debugOptions.preLockSentinel=1234;
+[sentOut,~]=run_vlsi2024_xsr('debug_link',256,'Config',cfgSent);
+assert(sentOut.preLockSentinelApplied && any(sentOut.model.rxPma.lane(1).afe.ctleOut==1234));
+assert(~any(sentOut.performance.lane(1).ctleOut==1234),'pre-lock sentinel entered performance window');
+assert(sentOut.result.berValid,'pre-lock sentinel invalidated post-lock BER');
+cfgNoCdrRequested=cfgManual; cfgNoCdrRequested.model.debugStages.cdrEnabled=false;
+[noCdrConfigured,~]=run_vlsi2024_xsr('debug_link',256,'Config',cfgNoCdrRequested);
+assert(strcmp(noCdrConfigured.status,'debug_no_cdr') && ~noCdrConfigured.appliedCfg.model.useReferenceAlign);
+assert(all(arrayfun(@(x)~isfield(x.cdrTrace,'trainingMode') || ~strcmp(x.cdrTrace.trainingMode,'legacy_reference_align'),noCdrConfigured.model.rxPma.lane)));
+requiredTrainPaths={"rxPma.lane.terminationMode","rxPma.lane.termGain","txPma.lane.targetSwing","txPma.lane.enableDacQuantization",...
+    "txPma.lane.dacLevels","txPma.lane.ffeMode","txPma.lane.ffeOffsets","txPma.lane.ffeCoeffs","txPma.lane.ffeCurrent",...
+    "rxPma.lane.ctleBoost_dB","rxPma.lane.samplerRoles.samplerOffsetCodes","rxPma.lane.samplerRoles.thresholdAssumptions",...
+    "model.cdrOptions.staticPhaseSkewUI","model.cdrOptions.staticDutyCorrectionUI","model.cdrOptions.nCodes",...
+    "model.cdrOptions.mismatchBoundLSB","model.cdrOptions.loopBandwidthProxy","model.cdrOptions.updateCadence",...
+    "model.cdrOptions.lockToleranceUI","model.debugStages.postLockWaitUI"};
+actualTrainPaths=cellstr(string(app.Debug.trainedParameters.parameterPath)); requiredTrainPaths=cellstr(requiredTrainPaths);
+for k=1:numel(requiredTrainPaths), assert(any(strcmp(actualTrainPaths,requiredTrainPaths{k}))); end
+ffeModeRow=app.Debug.trainedParameters(strcmp(string(app.Debug.trainedParameters.parameterPath),'txPma.lane.ffeMode'),:);
+assert(~isempty(ffeModeRow)&&~strcmp(ffeModeRow.applied,'[-1 0 1]'),'FFE mode applied value is mis-mapped');
+cfgSix=phyConfig('vlsi2024_xsr_typical'); cfgSix.link.nBits=256; cfgSix.txPma.lane.ffeMode='six_tap';
+cfgSix.txPma.lane.ffeOffsets=cfgSix.txPma.lane.sixTapPreset.offsets; cfgSix.txPma.lane.ffeCoeffs=cfgSix.txPma.lane.sixTapPreset.coeffs;
+[sixOut,~]=run_vlsi2024_xsr('debug_link',256,'Config',cfgSix);
+assert(strcmp(sixOut.trainedCfg.txPma.lane.ffeMode,'six_tap')&&numel(sixOut.trainedCfg.txPma.lane.ffeOffsets)==6);
+cfgAc=phyConfig('vlsi2024_xsr_typical'); cfgAc.link.nBits=128; cfgAc.rxPma.lane.enableAcPre=true; cfgAc.rxPma.lane.terminationMode='AC';
+cfgDc=cfgAc; cfgDc.rxPma.lane.terminationMode='DC';
+pAc=D2DPHY('ac_mode',1); pAc.configure(cfgAc); pAc.run(); pDc=D2DPHY('dc_mode',1); pDc.configure(cfgDc); pDc.run();
+assert(norm(pAc.rxPma.lane(1).afe.acPreOut-pAc.rxPma.lane(1).afe.termOut)>0);
+assert(isequaln(pDc.rxPma.lane(1).afe.acPreOut,pDc.rxPma.lane(1).afe.termOut));
 toggleFields={'startupCalibration','ctleTraining','ffeTraining','samplerCalibration','clockTraining'};
 for k=1:numel(toggleFields)
     c=phyConfig('vlsi2024_xsr_typical'); c.link.nBits=128; c.model.debugStages.(toggleFields{k})=false;
@@ -87,6 +120,16 @@ assert(~noCdr.berValid&&strcmp(noCdr.status,'debug_no_cdr')&&all(isnan(noCdr.res
 bad=app.ConfigTable.Data{idx,3}; app.ConfigTable.Data{idx,3}='-1';
 try, app.applyConfigTable(false); catch, end
 assert(app.Cfg.link.nBits==256,'invalid edit changed requested cfg'); app.ConfigTable.Data{idx,3}=bad;
+for badValue={'abc','-1','1.5'}
+    app.ConfigTable.Data{idx,3}=badValue{1}; try, app.applyConfigTable(false); catch, end
+    assert(app.Cfg.link.nBits==256,'invalid numeric edit changed requested cfg');
+end
+logicalIdx=find(strcmp(app.ConfigPaths,'model.debugStages.cdrEnabled'),1); oldLogical=app.ConfigTable.Data{logicalIdx,3};
+app.ConfigTable.Data{logicalIdx,3}='abc'; try, app.applyConfigTable(false); catch, end
+assert(app.Cfg.model.debugStages.cdrEnabled==true,'invalid logical edit changed requested cfg'); app.ConfigTable.Data{logicalIdx,3}=oldLogical;
+modeIdx=find(strcmp(app.ConfigPaths,'rxPma.lane.terminationMode'),1); oldMode=app.ConfigTable.Data{modeIdx,3};
+app.ConfigTable.Data{modeIdx,3}='xyz'; try, app.applyConfigTable(false); catch, end
+assert(strcmp(app.Cfg.rxPma.lane.terminationMode,'AC'),'invalid enum edit changed requested cfg'); app.ConfigTable.Data{modeIdx,3}=oldMode;
 
 app.PresetDropDown.Value='VLSI Ideal'; app.loadPreset();
 assert(strcmp(app.Cfg.paper.preset,'VLSI Ideal') && app.Cfg.channel.lossAtRef_dB==0 && isinf(app.Cfg.link.snr_dB));

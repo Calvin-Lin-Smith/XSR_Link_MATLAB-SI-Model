@@ -29,11 +29,11 @@ Each subsystem can be opened to inspect the TX/RX lanes, eight channel blocks, C
 
 Both implementations use the `d2dCfg` structure. In the GUI:
 
-- **Apply + Sync** writes the current table to the MATLAB base workspace, the loaded model's Model Workspace, and `simulink/d2d_shared_config.mat`.
-- **Reset Typical** and **Reset Ideal** publish their profiles immediately.
-- **Load from SLX** reads `d2dCfg` from the loaded model and refreshes the GUI table.
+- **Apply + Sync** writes a validated VLSI2024 XSR paper table to the MATLAB base workspace, the loaded model's Model Workspace, and `simulink/d2d_shared_config.mat`.
+- **VLSI Typical** and **VLSI Ideal** are the two paper presets; selecting one only repopulates GUI initial values.
+- **Load from Simulink** reads and validates paper-schema `d2dCfg` from the loaded model and refreshes the GUI table.
 
-Simulink blocks read fields such as `d2dCfg.link.sps`, TX FFE taps, channel loss/poles, termination gain, CTLE boost/zero, and modulation directly. To change parameters from Simulink, edit `d2dCfg` in Model Explorer under the model workspace and then use **Load from SLX** in the GUI.
+Simulink blocks read fields such as `d2dCfg.link.sps`, TX FFE taps, channel loss/poles, termination mode/gain, CTLE boost/zero, and modulation directly. To change parameters from Simulink, edit paper `d2dCfg` in Model Explorer under the model workspace and then use **Load from Simulink** in the GUI.
 
 Options:
 
@@ -50,6 +50,6 @@ mdl = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
     'Config',cfg,'Open',false,'Save',true,'Overwrite',false);
 ```
 
-The builder preserves the legacy default model name, but only overwrites an existing `.slx` when `Overwrite` is true. The generated TX path uses vector FFE/DAC fields when present; the channel uses the calibrated analytic IL fields; RX exposes AC pre/post, CTLE, sampler-role and a stateful BB-CDR/PI/adaptation boundary. MATLAB remains the algorithm source of truth.
+The builder preserves the existing default model name, but only overwrites an existing `.slx` when `Overwrite` is true. The generated TX path uses vector FFE/DAC fields when present; the channel uses the calibrated analytic IL fields; RX exposes AC pre/post, CTLE, sampler-role and a stateful BB-CDR/PI/adaptation boundary. MATLAB remains the algorithm source of truth.
 
 Requirements: MATLAB Simulink license. The generated `.slx` is an additional artifact; it does not replace `D2DPHY`, `D2DWorkbench`, or the T1-T9 regression. All BER values remain finite-sample behavioral measurements with the profile's recorded assumptions and do not constitute silicon or paper BER sign-off.

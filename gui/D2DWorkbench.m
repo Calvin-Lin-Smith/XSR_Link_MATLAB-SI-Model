@@ -179,6 +179,7 @@ classdef D2DWorkbench < handle
                 uialert(app.Figure,'Only a VLSI2024 XSR paper configuration can be loaded.','Paper config required'); return;
             end
             app.Cfg=candidate; app.populateConfigTable();
+            if any(strcmp(D2DWorkbench.presetNames(),candidate.paper.preset)), app.PresetDropDown.Value=candidate.paper.preset; end
             app.log('VLSI2024 XSR paper configuration loaded from Simulink.');
         end
 
@@ -359,7 +360,7 @@ classdef D2DWorkbench < handle
                 'rxPma.lane.samplerRoles.roleCounts.total','rxPma.lane.samplerRoles.levelShiftCodes.data',...
                 'rxPma.lane.samplerRoles.levelShiftCodes.edge','rxPma.lane.samplerRoles.levelShiftCodes.spare',...
                 'rxPma.lane.samplerRoles.samplerOffsetCodes','rxPma.lane.samplerRoles.thresholdAssumptions',...
-                'model.resultRoot','model.enablePaperAdaptation','model.trainingMode','model.cdrOptions.nCodes',...
+                'model.resultRoot','model.enablePaperAdaptation','model.trainingMode','model.useManualPhase','model.manualPhaseUI','model.manualDelayUI','model.cdrOptions.nCodes',...
                 'model.cdrOptions.initialPhaseUI','model.cdrOptions.loopGainCodes','model.cdrOptions.loopBandwidthProxy',...
                 'model.cdrOptions.updateCadence','model.cdrOptions.lockWindow','model.cdrOptions.lockToleranceUI',...
                 'model.cdrOptions.mismatchBoundLSB','model.cdrOptions.mismatchSeed','model.cdrOptions.enabled','model.cdrOptions.maxStepCodes',...
@@ -380,11 +381,15 @@ classdef D2DWorkbench < handle
         function value=parseValue(text,old)
             if iscell(text), text=text{1}; end; text=char(string(text));
             if ischar(old)||isstring(old), value=strtrim(text);
-            elseif islogical(old), value=any(strcmpi(strtrim(text),{'true','1','on'}));
+            elseif islogical(old)
+                token=lower(strtrim(text));
+                if any(strcmp(token,{'true','1','on'})), value=true;
+                elseif any(strcmp(token,{'false','0','off'})), value=false;
+                else, error('logical value must be true/false'); end
             else
                 value=sscanf(strrep(strrep(text,',',' '),'[',' '),'%f').';
                 if isempty(value) && strcmpi(strtrim(text),'inf'), value=inf; end
-                if isempty(value), value=old; end
+                if isempty(value), error('numeric value required'); end
                 if isscalar(old)&&numel(value)==1, value=value(1); end
             end
         end
@@ -401,12 +406,17 @@ classdef D2DWorkbench < handle
                 if contains(path,'ffeOffsets') && (numel(unique(value))~=numel(value) || ~any(value==0)), error('FFE offsets must be unique and include zero'); end
                 if contains(path,'ctleBoost') && (value<0 || value>6), error('CTLE boost must be within 0 to 6 dB'); end
                 if contains(path,'lossAtRef') && value<0, error('analytic IL must be nonnegative'); end
+                if contains(path,'BudgetUI') && (~isscalar(value)||value<0||value~=fix(value)), error('UI budget must be a nonnegative integer'); end
+                if strcmp(path,'model.cdrOptions.nCodes') && (~isscalar(value)||value<2||value~=fix(value)), error('PI code count must be an integer >= 2'); end
                 if contains(path,'thresholdAssumptions') && numel(value)~=3, error('PAM4 requires three thresholds'); end
                 if contains(path,'mismatchBoundLSB') && (value<0||value>=0.5), error('PI mismatch bound must be in [0,0.5)'); end
-                if contains(path,'postLockWaitUI') && (value<0||~isscalar(value)), error('post-lock wait must be nonnegative'); end
+                if contains(path,'postLockWaitUI') && (value<0||~isscalar(value)||value~=fix(value)), error('post-lock wait must be a nonnegative integer'); end
             end
             if islogical(value)&&~isscalar(value), error('logical control must be scalar'); end
             if contains(path,'ffeCoeffs') && numel(value)~=numel(old), error('FFE coefficients/offsets length mismatch'); end
+            if strcmp(path,'rxPma.lane.terminationMode') && ~any(strcmp(value,{'AC','DC'})), error('terminationMode must be AC or DC'); end
+            if strcmp(path,'txPma.lane.ffeMode') && ~any(strcmp(value,{'three_tap','six_tap','vector'})), error('ffeMode must be three_tap or six_tap'); end
+            if strcmp(path,'rxPma.lane.ctlePolicy') && ~any(strcmp(value,{'paper_grid','continuous','quantized_grid'})), error('unsupported CTLE policy'); end
         end
         function validatePaperConfig(cfg)
             assert(isfield(cfg,'paper')&&strcmp(cfg.paper.id,'VLSI2024_XSR_3nm'),'VLSI2024 paper identity required');

@@ -132,30 +132,31 @@ function out=runDebugLink(requestedCfg,nBits)
 validateattributes(requestedCfg,{'struct'},{'scalar'});
 requestedCfg.link.nBits=nBits; requestedCfg.phy.nLane=8;
 stage=normalizeDebugStages(requestedCfg.model.debugStages);
-workCfg=requestedCfg; workCfg.model.enablePaperAdaptation=true;
-[~,stateTrace,ctleTrace,trainedCfg]=runAdaptationFlow(workCfg,stage);
-% Each disabled stage carries the user's manual control into the measured pass.
-if ~stage.startupCalibration
-    trainedCfg.txPma.lane.gainError=requestedCfg.txPma.lane.gainError;
-    trainedCfg.txPma.lane.enableSwingCalibration=requestedCfg.txPma.lane.enableSwingCalibration;
-    trainedCfg.rxPma.lane.termGain=requestedCfg.rxPma.lane.termGain;
+workCfg=requestedCfg; stage.runTraining=true; % stage execution is separate from requested adaptation enable
+[~,stateTrace,ctleTrace,rawTrainedCfg]=runAdaptationFlow(workCfg,stage);
+% Start from the exact requested configuration; only enabled-stage-owned controls may change.
+trainedCfg=requestedCfg;
+if stage.startupCalibration
+    trainedCfg.txPma.lane.gainError=rawTrainedCfg.txPma.lane.gainError;
+    trainedCfg.txPma.lane.enableSwingCalibration=rawTrainedCfg.txPma.lane.enableSwingCalibration;
+    trainedCfg.rxPma.lane.termGain=rawTrainedCfg.rxPma.lane.termGain;
 end
-if ~stage.clockTraining
-    trainedCfg.model.cdrOptions.staticPhaseSkewUI=getField(requestedCfg.model.cdrOptions,'staticPhaseSkewUI',0);
-    trainedCfg.model.cdrOptions.staticDutyCorrectionUI=getField(requestedCfg.model.cdrOptions,'staticDutyCorrectionUI',0);
+if stage.clockTraining
+    trainedCfg.model.cdrOptions.staticPhaseSkewUI=getField(rawTrainedCfg.model.cdrOptions,'staticPhaseSkewUI',0);
+    trainedCfg.model.cdrOptions.staticDutyCorrectionUI=getField(rawTrainedCfg.model.cdrOptions,'staticDutyCorrectionUI',0);
 end
-if ~stage.samplerCalibration, trainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=requestedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes; end
-if ~stage.ctleTraining
-    trainedCfg.rxPma.lane.ctleBoost_dB=requestedCfg.rxPma.lane.ctleBoost_dB;
-    trainedCfg.rxPma.lane.ctleAppliedBoost_dB=requestedCfg.rxPma.lane.ctleAppliedBoost_dB;
+if stage.samplerCalibration, trainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes=rawTrainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes; end
+if stage.ctleTraining
+    trainedCfg.rxPma.lane.ctleBoost_dB=rawTrainedCfg.rxPma.lane.ctleBoost_dB;
+    trainedCfg.rxPma.lane.ctleAppliedBoost_dB=rawTrainedCfg.rxPma.lane.ctleAppliedBoost_dB;
 end
-if ~stage.ffeTraining
-    trainedCfg.txPma.lane.ffeMode=requestedCfg.txPma.lane.ffeMode;
-    trainedCfg.txPma.lane.ffeOffsets=requestedCfg.txPma.lane.ffeOffsets;
-    trainedCfg.txPma.lane.ffeCoeffs=requestedCfg.txPma.lane.ffeCoeffs;
+if stage.ffeTraining
+    trainedCfg.txPma.lane.ffeMode=rawTrainedCfg.txPma.lane.ffeMode;
+    trainedCfg.txPma.lane.ffeOffsets=rawTrainedCfg.txPma.lane.ffeOffsets;
+    trainedCfg.txPma.lane.ffeCoeffs=rawTrainedCfg.txPma.lane.ffeCoeffs;
 end
 trainedCfg.link.nBits=nBits; trainedCfg.phy.nLane=8;
-trainedCfg.model.useReferenceAlign=~stage.cdrEnabled;
+trainedCfg.model.useReferenceAlign=false; trainedCfg.model.useManualPhase=~stage.cdrEnabled;
 r=runModel(trainedCfg); p=r.model; rawResult=r.result; nLane=p.nLane;
 lockUI=zeros(nLane,1); laneLocked=false(nLane,1); fullLockTrace=cell(nLane,1);
 for k=1:nLane
@@ -184,6 +185,14 @@ else
     if stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; result.status=status; end
     result.errCnt=nan(1,nLane); result.nMeasured=zeros(1,nLane); result.ber=nan(1,nLane); result.aggregateBer=NaN;
 end
+sentinel=getField(requestedCfg.model.debugOptions,'preLockSentinel',NaN);
+if isfinite(sentinel)
+    for k=1:nLane
+        wave=p.rxPma.lane(k).afe.ctleOut; nSent=min(max(measurementStartSample-1,0),numel(wave));
+        if nSent>0, wave(1:nSent)=sentinel; p.rxPma.lane(k).afe.ctleOut=wave; end
+    end
+    nBitsSent=min(berStart*bitsPerSymbol,size(rawResult.rxBits,1)); if nBitsSent>0, rawResult.rxBits(1:nBitsSent,1)=1-rawResult.rxBits(1:nBitsSent,1); end
+end
 performance=performanceWindow(p,berStart,measurementStartSample,requestedCfg.link.sps,requestedCfg.link.modulation);
 trainedParameters=trainedParameterTable(requestedCfg,trainedCfg,p,stage,ctleTrace);
 appliedCfg=appliedConfig(p,trainedCfg); result.requestedCfg=requestedCfg; result.trainedCfg=trainedCfg;
@@ -196,7 +205,8 @@ out=struct('mode','debug_link','status',status,'requestedCfg',requestedCfg,'trai
     'trainingEndUI',trainingEndUI,'totalTrainingBudgetUI',totalTrainingBudgetUI,...
     'berStartUIInFinalPass',berStart,'measurementStartUI',berStart,'measurementStartSample',measurementStartSample,...
     'postLockWaitUI',postWait,'totalWaitedUI',totalTrainingBudgetUI+berStart,'performance',performance,...
-    'requiredLaneLockUI',latestLock,'berValid',result.berValid);
+    'requiredLaneLockUI',latestLock,'berValid',result.berValid,'preLockSentinelApplied',isfinite(sentinel),...
+    'preLockSentinel',sentinel);
 end
 
 function s=normalizeDebugStages(s)
@@ -241,14 +251,15 @@ end
 end
 
 function t=trainedParameterTable(req,trained,p,stage,ctleTrace)
-paths={"txPma.lane.gainError";"rxPma.lane.termGain";"txPma.lane.targetSwing";"txPma.lane.enableDacQuantization";"txPma.lane.dacLevels";...
-    "txPma.lane.ffeMode";"txPma.lane.ffeOffsets";"txPma.lane.ffeCoeffs";"txPma.lane.ffeCurrent";"rxPma.lane.ctleBoost_dB";...
+paths={"rxPma.lane.terminationMode";"rxPma.lane.termGain";"txPma.lane.gainError";"txPma.lane.targetSwing";"txPma.lane.enableDacQuantization";"txPma.lane.dacLevels";"txPma.lane.enableSwingCalibration";...
+    "txPma.lane.ffeMode";"txPma.lane.ffeOffsets";"txPma.lane.ffeCoeffs";"txPma.lane.ffeCurrent";"rxPma.lane.ctlePolicy";"rxPma.lane.ctleBoost_dB";...
     "rxPma.lane.samplerRoles.samplerOffsetCodes";"rxPma.lane.samplerRoles.thresholdAssumptions";"model.cdrOptions.staticPhaseSkewUI";...
-    "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.loopGainCodes";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled"};
-owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";...
-    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"cdrEnabled"};
-units={"fraction";"gain";"V";"bool";"level";"enum";"UI";"coefficient";"magnitude";"dB";"code";"code";"UI";"UI";"code";"code/UI";"UI";"bool"};
-constraints={"finite";"positive";"positive";"false/true";">=2";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"finite";"positive";"true/false"};
+    "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.loopBandwidthProxy";...
+    "model.cdrOptions.updateCadence";"model.cdrOptions.lockToleranceUI";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled";"model.debugStages.postLockWaitUI"};
+owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";"ctleTraining";...
+    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled"};
+units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"LSB";"code/UI";"count";"UI";"UI";"bool";"UI"};
+constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,0.5)";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
 rows=cell(numel(paths),10);
 for k=1:numel(paths)
     path=char(paths{k}); owner=owners{k}; enabled=logical(stage.(owner)); status=string(ternary(enabled,'executed','skipped_manual_value'));
@@ -268,34 +279,53 @@ parts=strsplit(path,'.'); v=s; for k=1:numel(parts), if isstruct(v)&&isfield(v,p
 end
 function v=appliedParam(p,path,cfg)
 switch path
+    case 'rxPma.lane.terminationMode', v=cfg.rxPma.lane.terminationMode;
     case 'txPma.lane.gainError', v=p.txPma.lane(1).driver.gainError;
     case 'rxPma.lane.termGain', v=p.rxPma.lane(1).afe.term.gain;
     case 'txPma.lane.targetSwing', v=p.txPma.lane(1).driver.targetSwing;
     case 'txPma.lane.enableDacQuantization', v=p.txPma.lane(1).driver.dacMeta.enabled;
     case 'txPma.lane.dacLevels', v=getField(p.txPma.lane(1).driver.dacMeta,'appliedLevels',0);
-    case 'txPma.lane.ffeMode', v=p.txPma.lane(1).ffe.tapMeta.appliedOffsets;
+    case 'txPma.lane.enableSwingCalibration', v=getField(p.txPma.lane(1).driver.dacMeta,'swingCalibrated',p.txPma.lane(1).driver.enableSwingCalibration);
+    case 'txPma.lane.ffeMode', v=cfg.txPma.lane.ffeMode;
     case 'txPma.lane.ffeOffsets', v=p.txPma.lane(1).ffe.tapMeta.appliedOffsets;
     case 'txPma.lane.ffeCoeffs', v=p.txPma.lane(1).ffe.tapMeta.appliedCoefficients;
+    case 'rxPma.lane.ctlePolicy', v=p.rxPma.lane(1).afe.ctle.policy;
     case 'rxPma.lane.ctleBoost_dB', v=p.rxPma.lane(1).afe.ctle.appliedBoost_dB;
     case 'rxPma.lane.samplerRoles.samplerOffsetCodes', v=p.rxPma.lane(1).slicer.samplerOffsetCodes;
-    case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign;
+    case 'rxPma.lane.samplerRoles.thresholdAssumptions', v=p.rxPma.lane(1).slicer.comparatorThresholds;
+    case 'model.cdrOptions.mismatchBoundLSB', v=appliedMismatch(p,cfg);
+    case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign && ~p.rxPma.lane(1).useManualPhase;
     otherwise, v=readParam(cfg,path);
 end
 end
-function v=residualValue(a,b), if isnumeric(a)&&isnumeric(b)&&isscalar(a)&&isscalar(b), v=abs(a-b); else, v=NaN; end, end
+function v=appliedMismatch(p,cfg)
+v=cfg.model.cdrOptions.mismatchBoundLSB; t=p.rxPma.lane(1).cdrTrace;
+if isstruct(t)&&isfield(t,'piOptions'), v=getField(t.piOptions,'mismatchBoundLSB',v); end
+end
+function v=residualValue(a,b)
+if isnumeric(a)&&isnumeric(b)&&isequal(size(a),size(b)), d=double(b)-double(a); v=norm(d(:));
+elseif islogical(a)&&islogical(b), v=double(any(a(:)~=b(:)));
+elseif ischar(a)||isstring(a), v="unchanged";
+else, v=NaN;
+end
+end
 function s=showValue(v), if ischar(v)||isstring(v), s=char(v); elseif islogical(v), s=mat2str(v); elseif isnumeric(v), s=mat2str(v,16); else, s=char(string(v)); end, end
 function v=ternary(tf,a,b), if tf, v=a; else, v=b; end, end
 
 function [cfg,stateTrace,ctleTrace,trainedCfg]=runAdaptationFlow(cfg,stageOptions)
 % One bounded, observable calibration flow; objective is eye margin, never BER.
 if nargin<2 || isempty(stageOptions), stageOptions=normalizeDebugStages(cfg.model.debugStages); end
-adaptBits=min(cfg.link.nBits,2^14); enabled=logical(cfg.model.enablePaperAdaptation); d=cfg;
+adaptBits=min(cfg.link.nBits,2^14); enabled=logical(getField(stageOptions,'runTraining',cfg.model.enablePaperAdaptation)); d=cfg;
 d.link.nBits=adaptBits; d.model.adaptationSampleBits=adaptBits;
 d.txPma.lane.gainError=0.08; d.txPma.lane.enableSwingCalibration=false;
 d.rxPma.lane.termGain=0.92; d.rxPma.lane.ctleBoost_dB=4.8;
 d.model.cdrOptions.staticPhaseSkewUI=0.03; d.model.cdrOptions.staticDutyCorrectionUI=0.02;
 d.rxPma.lane.samplerRoles.samplerOffsetCodes=0.5;
-d.txPma.lane.ffeMode='three_tap'; d.txPma.lane.ffeOffsets=[-1 0 1]; d.txPma.lane.ffeCoeffs=[-0.08 0.84 -0.08];
+if strcmpi(char(cfg.txPma.lane.ffeMode),'six_tap')
+    d.txPma.lane.ffeMode='six_tap'; d.txPma.lane.ffeOffsets=cfg.txPma.lane.ffeOffsets; d.txPma.lane.ffeCoeffs=cfg.txPma.lane.ffeCoeffs;
+else
+    d.txPma.lane.ffeMode='three_tap'; d.txPma.lane.ffeOffsets=[-1 0 1]; d.txPma.lane.ffeCoeffs=[-0.08 0.84 -0.08];
+end
 d.channel.lossAtRef_dB=10.8; d.channel.lossNyq_dB=10.8;
 d.model.adaptation=struct('states',{{'RESET','STARTUP_IMPEDANCE_CAL','CLOCK_CAL','INITIAL_EQ_TRAIN','MISSION_TRACK'}},...
     'enabled',enabled,'objective','minimum adjacent decision-level margin','disturbance','TX gain + RX term + channel loss + CTLE drift',...
@@ -346,11 +376,17 @@ if stageOptions.ctleTraining
 else
     ctleRows=zeros(0,11);
 end
-ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
+if strcmpi(char(d.txPma.lane.ffeMode),'six_tap')
+    ffeCandidates={d.txPma.lane.ffeCoeffs,0.95*d.txPma.lane.ffeCoeffs,0.9*d.txPma.lane.ffeCoeffs};
+    ffeOffsets=d.txPma.lane.ffeOffsets; ffeMode=d.txPma.lane.ffeMode;
+else
+    ffeCandidates={[-0.01 0.98 -0.01],[-0.03 0.94 -0.03],[-0.05 0.90 -0.05]};
+    ffeOffsets=[-1 0 1]; ffeMode='three_tap';
+end
 if stageOptions.ffeTraining
     if bestObj==-inf, bestObj=adaptObjective(bestR.model); end
     for k=1:numel(ffeCandidates)
-        ck=bestCfg; ck.txPma.lane.ffeMode='three_tap'; ck.txPma.lane.ffeOffsets=[-1 0 1]; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
+        ck=bestCfg; ck.txPma.lane.ffeMode=ffeMode; ck.txPma.lane.ffeOffsets=ffeOffsets; ck.txPma.lane.ffeCoeffs=ffeCandidates{k};
         rk=runModel(ck); obj=adaptObjective(rk.model); if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
     end
 end
