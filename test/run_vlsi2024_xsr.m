@@ -132,6 +132,8 @@ function out=runDebugLink(requestedCfg,nBits)
 validateattributes(requestedCfg,{'struct'},{'scalar'});
 requestedCfg.link.nBits=nBits; requestedCfg.phy.nLane=8;
 stage=normalizeDebugStages(requestedCfg.model.debugStages);
+effectiveCdrEnabled=logical(stage.cdrEnabled) && logical(getField(requestedCfg.model.cdrOptions,'enabled',true));
+stage.cdrEnabled=effectiveCdrEnabled;
 workCfg=requestedCfg; stage.runTraining=true; % stage execution is separate from requested adaptation enable
 [~,stateTrace,ctleTrace,rawTrainedCfg]=runAdaptationFlow(workCfg,stage);
 % Start from the exact requested configuration; only enabled-stage-owned controls may change.
@@ -216,8 +218,8 @@ out=struct('mode','debug_link','status',status,'requestedCfg',requestedCfg,'trai
     'trainingEndUI',trainingEndUI,'totalTrainingBudgetUI',totalTrainingBudgetUI,...
     'berStartUIInFinalPass',berStart,'measurementStartUI',berStart,'measurementStartSample',measurementStartSample,...
     'postLockWaitUI',postWait,'totalWaitedUI',totalTrainingBudgetUI+berStart,'performance',performance,...
-    'requiredLaneLockUI',latestLock,'berValid',result.berValid,'preLockSentinelApplied',isfinite(sentinel),...
-    'preLockSentinel',sentinel);
+    'requiredLaneLockUI',latestLock,'berValid',result.berValid,'effectiveCdrEnabled',effectiveCdrEnabled,...
+    'preLockSentinelApplied',isfinite(sentinel),'preLockSentinel',sentinel);
 end
 
 function s=normalizeDebugStages(s)
@@ -277,12 +279,12 @@ paths={"rxPma.lane.terminationMode";"rxPma.lane.termGain";"txPma.lane.gainError"
     "txPma.lane.ffeMode";"txPma.lane.ffeOffsets";"txPma.lane.ffeCoeffs";"txPma.lane.ffeCurrent";"rxPma.lane.ctlePolicy";"rxPma.lane.ctleBoost_dB";...
     "rxPma.lane.samplerRoles.samplerOffsetCodes";"rxPma.lane.samplerRoles.thresholdAssumptions";"model.cdrOptions.staticPhaseSkewUI";...
     "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.initialPhaseUI";"model.cdrOptions.loopGainCodes";...
-    "model.cdrOptions.enabled";"model.cdrOptions.maxStepCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.loopBandwidthProxy";...
+    "model.cdrOptions.enabled";"model.cdrOptions.maxStepCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.mismatchSeed";"model.cdrOptions.loopBandwidthProxy";...
     "model.cdrOptions.updateCadence";"model.cdrOptions.lockToleranceUI";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled";"model.debugStages.postLockWaitUI"};
 owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";"ctleTraining";...
-    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled"};
-units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"UI";"code";"bool";"code";"LSB";"code/UI";"count";"UI";"UI";"bool";"UI"};
-constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,1] UI";"nonnegative";"true/false";"positive";"[0,0.5)";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
+    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled"};
+units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"UI";"code";"bool";"code";"LSB";"seed";"code/UI";"count";"UI";"UI";"bool";"UI"};
+constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,1] UI";"nonnegative";"true/false";"positive";"[0,0.5)";"integer seed";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
 rows=cell(numel(paths),10);
 for k=1:numel(paths)
     path=char(paths{k}); owner=owners{k}; enabled=logical(stage.(owner)); status=string(ternary(enabled,'executed','skipped_manual_value'));
@@ -317,6 +319,7 @@ switch path
     case 'rxPma.lane.samplerRoles.samplerOffsetCodes', v=p.rxPma.lane(1).slicer.samplerOffsetCodes;
     case 'rxPma.lane.samplerRoles.thresholdAssumptions', v=p.rxPma.lane(1).slicer.comparatorThresholds;
     case 'model.cdrOptions.mismatchBoundLSB', v=appliedMismatch(p,cfg);
+    case 'model.cdrOptions.mismatchSeed', v=appliedMismatchSeed(p,cfg);
     case 'model.cdrOptions.enabled', v=~p.rxPma.lane(1).useManualPhase && ~p.rxPma.lane(1).useReferenceAlign;
     case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign && ~p.rxPma.lane(1).useManualPhase;
     otherwise, v=readParam(cfg,path);
@@ -325,6 +328,10 @@ end
 function v=appliedMismatch(p,cfg)
 v=cfg.model.cdrOptions.mismatchBoundLSB; t=p.rxPma.lane(1).cdrTrace;
 if isstruct(t)&&isfield(t,'piOptions'), v=getField(t.piOptions,'mismatchBoundLSB',v); end
+end
+function v=appliedMismatchSeed(p,cfg)
+v=cfg.model.cdrOptions.mismatchSeed; t=p.rxPma.lane(1).cdrTrace;
+if isstruct(t)&&isfield(t,'piOptions'), v=getField(t.piOptions,'mismatchSeed',v); end
 end
 function v=residualValue(a,b)
 if isnumeric(a)&&isnumeric(b)&&isequal(size(a),size(b)), d=double(b)-double(a); v=norm(d(:));
