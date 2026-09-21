@@ -412,13 +412,18 @@ classdef D2DWorkbench < handle
         function validateValue(path,value,old)
             if isnumeric(value)
                 if isempty(value)||any(isnan(value(:)))||any(~isfinite(value(:)) & ~strcmp(path,'link.snr_dB')), error('numeric value is not finite'); end
-                if any(contains(path,{'nBits','sps','skipUI','nCodes','lockWindow','updateCadence','dacLevels','quarterRateBranches'})) && ...
+                if any(contains(path,{'nBits','sps','nCodes','lockWindow','updateCadence','dacLevels','quarterRateBranches'})) && ...
                         (~isscalar(value)||value<=0||value~=fix(value)), error('integer value required'); end
+                if strcmp(path,'link.skipUI') && (~isscalar(value)||value<0||value~=fix(value)), error('skipUI must be an integer >= 0'); end
                 if contains(path,'Offsets') && any(value~=fix(value)), error('tap offsets must be signed integers'); end
                 if contains(path,'ffeOffsets') && (numel(unique(value))~=numel(value) || ~any(value==0)), error('FFE offsets must be unique and include zero'); end
                 if contains(path,'ctleBoost') && (value<0 || value>6), error('CTLE boost must be within 0 to 6 dB'); end
                 if contains(path,'lossAtRef') && value<0, error('analytic IL must be nonnegative'); end
                 if strcmp(path,'model.cdrOptions.initialPhaseUI') && (~isscalar(value)||value<0||value>1), error('manual/initial phase must be in [0,1] UI'); end
+                if strcmp(path,'model.manualPhaseUI') && (~isscalar(value)||value<0||value>=1), error('manual phase must be in [0,1) UI'); end
+                if strcmp(path,'model.manualDelayUI') && (~isscalar(value)||value~=fix(value)), error('manual delay must be an integer UI'); end
+                if strcmp(path,'rxPma.lane.termGain') && (~isscalar(value)||value<=0), error('termination gain must be positive'); end
+                if strcmp(path,'txPma.lane.ffeCurrentConstraint') && (~isscalar(value)||value<=0), error('FFE current constraint must be positive'); end
                 if strcmp(path,'txPma.lane.gainError') && (~isscalar(value)||abs(value)>1), error('TX gain error must be within +/-1'); end
                 if strcmp(path,'model.cdrOptions.loopGainCodes') && (~isscalar(value)||value<0), error('CDR loop gain must be nonnegative'); end
                 if contains(path,'BudgetUI') && (~isscalar(value)||value<0||value~=fix(value)), error('UI budget must be a nonnegative integer'); end

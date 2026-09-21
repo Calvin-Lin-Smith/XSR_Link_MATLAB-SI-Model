@@ -255,6 +255,7 @@ p.rxPma.lane.ctleAppliedBoost_dB=model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
 p.model.appliedFfe=ffe; p.model.appliedDac=dac;
 p.model.useReferenceAlign=false; p.model.useManualPhase=~model.rxPma.lane(1).cdrTrace.enabled;
 p.model.cdrOptions.enabled=~p.model.useManualPhase;
+p.model.manualPhaseUI=model.rxPma.lane(1).manualPhaseUI; p.model.manualDelayUI=model.rxPma.lane(1).manualDelayUI;
 p.rxPma.lane.samplerRoles.samplerOffsetCodes=model.rxPma.lane(1).slicer.samplerOffsetCodes;
 end
 
@@ -280,11 +281,12 @@ paths={"rxPma.lane.terminationMode";"rxPma.lane.termGain";"txPma.lane.gainError"
     "rxPma.lane.samplerRoles.samplerOffsetCodes";"rxPma.lane.samplerRoles.thresholdAssumptions";"model.cdrOptions.staticPhaseSkewUI";...
     "model.cdrOptions.staticDutyCorrectionUI";"model.cdrOptions.nCodes";"model.cdrOptions.initialPhaseUI";"model.cdrOptions.loopGainCodes";...
     "model.cdrOptions.enabled";"model.cdrOptions.maxStepCodes";"model.cdrOptions.mismatchBoundLSB";"model.cdrOptions.mismatchSeed";"model.cdrOptions.loopBandwidthProxy";...
-    "model.cdrOptions.updateCadence";"model.cdrOptions.lockToleranceUI";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled";"model.debugStages.postLockWaitUI"};
+    "model.cdrOptions.updateCadence";"model.cdrOptions.lockToleranceUI";"model.cdrOptions.lockWindow";"model.debugStages.cdrEnabled";"model.debugStages.postLockWaitUI";...
+    "model.useManualPhase";"model.manualPhaseUI";"model.manualDelayUI"};
 owners={"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"startupCalibration";"ffeTraining";"ffeTraining";"ffeTraining";"ffeTraining";"ctleTraining";"ctleTraining";...
-    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled"};
-units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"UI";"code";"bool";"code";"LSB";"seed";"code/UI";"count";"UI";"UI";"bool";"UI"};
-constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,1] UI";"nonnegative";"true/false";"positive";"[0,0.5)";"integer seed";"finite";"positive integer";"positive";"positive";"true/false";">=0"};
+    "samplerCalibration";"samplerCalibration";"clockTraining";"clockTraining";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled";"cdrEnabled"};
+units={"enum";"gain";"fraction";"V";"bool";"level";"bool";"enum";"UI";"coefficient";"magnitude";"enum";"dB";"code";"code";"UI";"UI";"code";"UI";"code";"bool";"code";"LSB";"seed";"code/UI";"count";"UI";"UI";"bool";"UI";"bool";"UI";"UI"};
+constraints={"AC or DC";"positive";"finite";"positive";"false/true";">=2";"bool";"signed 3/6 tap";"unique integers";"current <= 1";"<= currentConstraint";"paper_grid";"0:0.2:6 dB";"finite";"[-2 0 2]";"finite";"finite";">=2";"[0,1] UI";"nonnegative";"true/false";"positive";"[0,0.5)";"integer seed";"finite";"positive integer";"positive";"positive";"true/false";">=0";"true/false";"[0,1) UI";"integer UI"};
 rows=cell(numel(paths),10);
 for k=1:numel(paths)
     path=char(paths{k}); owner=owners{k}; enabled=logical(stage.(owner)); status=string(ternary(enabled,'executed','skipped_manual_value'));
@@ -322,6 +324,9 @@ switch path
     case 'model.cdrOptions.mismatchSeed', v=appliedMismatchSeed(p,cfg);
     case 'model.cdrOptions.enabled', v=~p.rxPma.lane(1).useManualPhase && ~p.rxPma.lane(1).useReferenceAlign;
     case 'model.debugStages.cdrEnabled', v=~p.rxPma.lane(1).useReferenceAlign && ~p.rxPma.lane(1).useManualPhase;
+    case 'model.useManualPhase', v=p.rxPma.lane(1).useManualPhase;
+    case 'model.manualPhaseUI', v=p.rxPma.lane(1).manualPhaseUI;
+    case 'model.manualDelayUI', v=p.rxPma.lane(1).manualDelayUI;
     otherwise, v=readParam(cfg,path);
 end
 end

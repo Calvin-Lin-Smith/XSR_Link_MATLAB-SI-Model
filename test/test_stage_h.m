@@ -99,6 +99,7 @@ requiredTrainPaths={"rxPma.lane.terminationMode","rxPma.lane.termGain","txPma.la
     "model.cdrOptions.initialPhaseUI","model.cdrOptions.loopGainCodes","model.cdrOptions.enabled","model.cdrOptions.maxStepCodes",...
     "model.cdrOptions.mismatchBoundLSB","model.cdrOptions.loopBandwidthProxy","model.cdrOptions.updateCadence",...
     "model.cdrOptions.lockToleranceUI","model.debugStages.postLockWaitUI"};
+requiredTrainPaths=[requiredTrainPaths "model.useManualPhase" "model.manualPhaseUI" "model.manualDelayUI"];
 actualTrainPaths=cellstr(string(app.Debug.trainedParameters.parameterPath)); requiredTrainPaths=cellstr(requiredTrainPaths);
 for k=1:numel(requiredTrainPaths), assert(any(strcmp(actualTrainPaths,requiredTrainPaths{k}))); end
 ffeModeRow=app.Debug.trainedParameters(strcmp(string(app.Debug.trainedParameters.parameterPath),'txPma.lane.ffeMode'),:);
@@ -172,10 +173,14 @@ modeIdx=find(strcmp(app.ConfigPaths,'rxPma.lane.terminationMode'),1); oldMode=ap
 app.ConfigTable.Data{modeIdx,3}='xyz'; try, app.applyConfigTable(false); catch, end
 assert(strcmp(app.Cfg.rxPma.lane.terminationMode,'AC'),'invalid enum edit changed requested cfg'); app.ConfigTable.Data{modeIdx,3}=oldMode;
 rejectEdit(app,'link.skipUI','1abc',32); rejectEdit(app,'link.skipUI','1.5',32);
+acceptEdit(app,'link.skipUI','0',0); rejectEdit(app,'link.skipUI','-1',32); rejectEdit(app,'link.skipUI','.5',32);
 rejectEdit(app,'model.debugStages.postLockWaitUI','-1',app.Cfg.model.debugStages.postLockWaitUI);
 rejectEdit(app,'model.debugStages.startupCalibrationBudgetUI','1.5',app.Cfg.model.debugStages.startupCalibrationBudgetUI);
 rejectEdit(app,'model.cdrOptions.nCodes','1',app.Cfg.model.cdrOptions.nCodes);
 rejectEdit(app,'model.cdrOptions.initialPhaseUI','1.2',app.Cfg.model.cdrOptions.initialPhaseUI);
+rejectEdit(app,'model.manualPhaseUI','1.2',app.Cfg.model.manualPhaseUI);
+rejectEdit(app,'rxPma.lane.termGain','0',app.Cfg.rxPma.lane.termGain); rejectEdit(app,'rxPma.lane.termGain','-1',app.Cfg.rxPma.lane.termGain);
+rejectEdit(app,'txPma.lane.ffeCurrentConstraint','0',app.Cfg.txPma.lane.ffeCurrentConstraint); rejectEdit(app,'txPma.lane.ffeCurrentConstraint','-1',app.Cfg.txPma.lane.ffeCurrentConstraint);
 rejectEdit(app,'channel.lossAtRef_dB','-1',app.Cfg.channel.lossAtRef_dB);
 rejectEdit(app,'rxPma.lane.ctleBoost_dB','7',app.Cfg.rxPma.lane.ctleBoost_dB);
 rejectEdit(app,'txPma.lane.ffeCoeffs','-0.1 0.9 abc',app.Cfg.txPma.lane.ffeCoeffs);
@@ -238,4 +243,10 @@ idx=find(strcmp(app.ConfigPaths,path),1); assert(~isempty(idx),path); app.Config
 try, app.applyConfigTable(false); catch, rejected=true; end
 assert(rejected && isequaln(app.getNested(app.Cfg,strsplit(path,'.')),expected),['invalid edit accepted: ' path]);
 app.ConfigTable.Data{idx,3}=app.valueToText(expected);
+end
+
+function acceptEdit(app,path,value,expected)
+idx=find(strcmp(app.ConfigPaths,path),1); assert(~isempty(idx),path); app.ConfigTable.Data{idx,3}=value; app.applyConfigTable(false);
+assert(isequaln(app.getNested(app.Cfg,strsplit(path,'.')),expected),['valid edit rejected: ' path]);
+app.ConfigTable.Data{idx,3}=app.valueToText(32); if strcmp(path,'link.skipUI'), app.applyConfigTable(false); end
 end
