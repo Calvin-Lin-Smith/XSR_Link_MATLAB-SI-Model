@@ -177,6 +177,7 @@
   },
   "paper": {
     "id": "VLSI2024_XSR_3nm",
+    "preset": "VLSI Typical",
     "mode": "link_behavioral",
     "rateRange_Gbps": [
       9.8,
@@ -237,6 +238,9 @@
   },
   "model": {
     "useReferenceAlign": false,
+    "useManualPhase": false,
+    "manualPhaseUI": 0.5,
+    "manualDelayUI": 0,
     "enablePaperAdaptation": true,
     "trainingMode": "decision_directed",
     "cdrOptions": {
@@ -251,6 +255,24 @@
       "mismatchSeed": 202409,
       "enabled": true,
       "maxStepCodes": 2
+    },
+    "debugStages": {
+      "startupCalibration": true,
+      "ctleTraining": true,
+      "ffeTraining": true,
+      "samplerCalibration": true,
+      "clockTraining": true,
+      "cdrEnabled": true,
+      "startupCalibrationBudgetUI": 64,
+      "ctleTrainingBudgetUI": 128,
+      "ffeTrainingBudgetUI": 128,
+      "samplerCalibrationBudgetUI": 64,
+      "clockTrainingBudgetUI": 64,
+      "postLockWaitUI": 16
+    },
+    "debugOptions": {
+      "postLockWaitUI": 16,
+      "preLockSentinel": null
     },
     "resultRoot": "results/vlsi2024_xsr",
     "adaptation": {
