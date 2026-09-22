@@ -1,25 +1,45 @@
-# VLSI2024 XSR PHY Model Workbench
+# VLSI2024 XSR Paper GUI
 
-## Launch
+这是 paper-only workbench，不是通用 profile 或 T1–T9 GUI。完整字段、窗口公式、演示工况和排障见 [canonical 完整指南](../GuideDoc/VLSI2024_XSR_SerDes_完整复现与演示指南.md)。
 
-Run from the project root in MATLAB R2024b:
+## 启动
 
-```matlab
+在 MATLAB R2024b 从项目根目录执行：
+
+~~~matlab
+addpath(genpath(fullfile(pwd,'src')));
+addpath(fullfile(pwd,'test'));
 addpath('gui');
 app = launchD2DWorkbench();
-```
+~~~
 
-## Main areas
+启动默认加载 VLSI Typical。下拉框只含 VLSI Typical 与 VLSI Ideal；选择 preset 只重填初值，后续 cell edit 仍是本地 requested cfg。
 
-- **VLSI2024 XSR hierarchy**: paper-aligned x8 tree from `D2DPHY` through signed FFE/DAC, analytic IL, AC/CTLE/sampler roles, and BB-CDR/PI.
-- **Paper controls**: the editable table exposes the VLSI2024 XSR rate/sample/seed, signed FFE, DAC, analytic IL, AC termination/coupling, CTLE, sampler roles, BB-CDR/PI, training toggles and post-lock wait. **Apply + Sync** publishes a valid paper configuration; **Load from Simulink** accepts paper schema only.
-- Training toggles run in fixed order: startup/swing, clock/DLL/PI, sampler, CTLE, FFE; each reports executed/skipped status, evaluation count, and offline UI budget. CDR enable is an explicit debug control.
-- **Paper presets**: **VLSI Typical** is the nominal paper behavioral setup. **VLSI Ideal** keeps the same paper identity/schema while disabling loss, noise, jitter, quantization and PI mismatch for debug reference. Selecting a preset repopulates the initial table; later edits remain local until explicitly applied or run.
-- **Paper actions**: **Run x8 Link** performs an in-memory trained debug link and reports requested/trained/applied controls, per-lane lock timing and one global post-lock BER/eye window. Other buttons call the existing VLSI2024 baseline, static A-D, BB-CDR/PI/jitter, adaptation, or full-regression runners.
-- **Paper probes/results**: select `Lane 1`–`Lane 8` or `All Lanes` for TX FFE/DAC, channel, AC pre/post, CTLE, level-shift/data/edge/spare samples, PI/CDR/lock and adaptation/tap traces. Before a run, probes remain empty and are labeled as unavailable.
+## 三个区域
 
-Paper evidence actions may write their documented artifacts to `results/vlsi2024_xsr/`; **Run x8 Link** is in-memory debug only.
+- 左侧 VLSI2024 XSR hierarchy：D2DPHY x8、Raw bits、signed FFE/DAC、analytic IL、AC/CTLE/sampler、BB-CDR/PI。选择节点会联动 Lane 和 probe。
+- 中央 Paper configuration and evidence：paper 参数表、Apply + Sync、Load from Simulink 和 paper actions。输入错误时保留上一份有效 requested cfg。
+- 右侧 Paper probes and results：Probe/Lane 选择、波形轴、Metrics、trainedParameters 和日志。Run x8 Link 前 probe 标为 unavailable；运行后 performance probe 从统一 post-lock 窗口开始。
 
-## Simulink synchronization
+## 操作
 
-Open `simulink/D2D_PHY_SI_Simulink.slx` in the same MATLAB session. GUI changes reach the model after **Apply + Sync**. To edit from Simulink, change the paper `d2dCfg` struct in Model Explorer's Model Workspace, then press **Load from Simulink** in the GUI.
+| 操作 | 作用 | 写盘 |
+|---|---|---|
+| Apply + Sync | 验证 paper 表并调用 syncD2DConfig；更新 base d2dCfg、默认 shared MAT、已加载模型 workspace | 是 |
+| Load from Simulink | 调用 loadD2DSharedConfig，按 Model Workspace → base → shared MAT →默认配置读取并验证 paper schema | 否 |
+| Run x8 Link | 调用 run_vlsi2024_xsr('debug_link',nBits,'Config',cfg)，执行 bounded training 和 final x8 debug | 否；只在内存 |
+| VLSI2024 Baseline | 调用 baseline runner | results/vlsi2024_xsr |
+| Static A-D / FFE / IL / AC-CTLE | 调用 static checkpoint runner | results/vlsi2024_xsr |
+| BB-CDR / PI / Jitter Evidence | 调用 bounded run_vlsi2024_regression('full',…) | results/vlsi2024_xsr |
+| Calibration / Adaptation | 调用 adaptation runner | results/vlsi2024_xsr |
+| Full VLSI2024 Regression | 调用 full runner | results/vlsi2024_xsr |
+
+Open Paper Results 只打开结果目录，Clear Log 只清空 LogArea。GUI StatusLabel 的 Passed 表示 callback 未抛异常；性能是否有效要看 Debug.status 与 Result.berValid。
+
+Run x8 Link 的五个训练开关是 startupCalibration、clockTraining、samplerCalibration、ctleTraining、ffeTraining；另有 cdrEnabled、每阶段 UI budget、postLockWaitUI、manualPhaseUI/manualDelayUI。每行都在 trainedParameters 中分开报告 requested、trained、applied、residual、constraint、unit。CDR 有效时，8 lane 必须全部 lock；BER、eye、margin 和 performance 使用一个 global latest-lock post-lock window。
+
+## Simulink round-trip
+
+先打开或生成模型，再在 Model Workspace 修改 paper d2dCfg，回到 GUI 点击 Load from Simulink。GUI 修改要写回模型和 shared MAT 时，明确点击 Apply + Sync。Run x8 Link 不会隐式同步。
+
+相关实现：[D2DWorkbench.m](D2DWorkbench.m)、[launchD2DWorkbench.m](launchD2DWorkbench.m)、[simulink/README.md](../simulink/README.md)。
