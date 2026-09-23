@@ -12,9 +12,9 @@
 root = 'E:\Master_Record\D2D_matlab_model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
-addpath(fullfile(root,'test')));
-addpath(fullfile(root,'gui')));
-addpath(fullfile(root,'simulink')));
+addpath(fullfile(root,'test'));
+addpath(fullfile(root,'gui'));
+addpath(fullfile(root,'simulink'));
 ~~~
 
 一次理想 core smoke：
@@ -51,11 +51,12 @@ GUI 只有 VLSI2024 XSR paper 工作流：
 - 中央：VLSI Typical/VLSI Ideal、paper 参数表、Apply + Sync、Load from Simulink 和 paper actions；
 - 右侧：Lane/All Lanes probes、post-lock Metrics、trainedParameters 和日志。
 
-Run x8 Link 执行 bounded offline training、final x8 CDR 和一个 global latest-lock post-lock window，仅返回内存结果。Baseline、Static A-D / FFE / IL / AC-CTLE、BB-CDR / PI / Jitter Evidence、Calibration / Adaptation 和 Full VLSI2024 Regression 会写 documented paper artifacts。GUI 细节见 [gui/README.md](gui/README.md) 和 [canonical 完整指南](GuideDoc/VLSI2024_XSR_SerDes_完整复现与演示指南.md)。
+Run x8 Link 执行 bounded offline training、final x8 CDR 和一个 global latest-lock post-lock window，仅返回内存结果。Baseline、Static A-D / FFE / IL / AC-CTLE、BB-CDR / PI / Jitter Evidence、Calibration / Adaptation 和 Full VLSI2024 Regression 会写 documented paper artifacts。GUI 的同步默认目标是 D2D_PHY_SI_Simulink；只有 Simulink license 存在且该模型已加载时读写其 Model Workspace。GUI 细节见 [gui/README.md](gui/README.md) 和 [canonical 完整指南](GuideDoc/VLSI2024_XSR_SerDes_完整复现与演示指南.md)。
 
 ## CLI 入口
 
 ~~~matlab
+root = pwd;
 cfg = phyConfig('vlsi2024_xsr_typical');
 [baseline,~] = run_vlsi2024_xsr('baseline',2^18,'Config',cfg);
 [loss,~] = run_vlsi2024_xsr('loss_sweep',2^14,'Config',cfg);
@@ -110,7 +111,7 @@ mdl = buildD2DSimulinkModel('Config',cfg,'Open',false, ...
     'Save',true,'Overwrite',false);
 ~~~
 
-builder 生成 TX Bits → Raw PCS → TX PMA x8 → Die-to-Die Channel x8 → RX PMA x8 → BER_Results → RX Bits 框图，使用共享 d2dCfg。它支持 ModelName、ModelPath、Config、Open、Save、Overwrite；Config 为空时按 loaded Model Workspace、base、shared MAT、默认配置读取。生成器会更新当前会话 base/Model Workspace，但不会隐式写 shared MAT。详见 [simulink/README.md](simulink/README.md)。
+builder 生成 TX Bits → Raw PCS → TX PMA x8 → Die-to-Die Channel x8 → RX PMA x8 → BER_Results → RX Bits 框图，使用共享 d2dCfg。它支持 ModelName、ModelPath、Config、Open、Save、Overwrite；Config 为空时，只有 Simulink license 存在且 ModelName 对应模型已加载才先读取其 Model Workspace，随后回退 base、shared MAT、默认配置。生成器会更新当前会话 base/Model Workspace，但不会隐式写 shared MAT。详见 [simulink/README.md](simulink/README.md)。
 
 ## 文档导航
 

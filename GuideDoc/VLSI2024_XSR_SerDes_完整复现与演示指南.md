@@ -36,7 +36,13 @@ addpath(fullfile(root,'simulink'));
 首次先跑短的理想 core smoke：
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
 cfg = phyConfig('ideal');
+nBits = 128;
+cfg.link.nBits = nBits;
 phy = D2DPHY('quick_link',8);
 phy.configure(cfg);
 result = phy.run();
@@ -57,14 +63,27 @@ paperI = phyConfig('vlsi2024_xsr_ideal');   % VLSI Ideal
 ### 1.3 入口速查
 
 ~~~matlab
-[out,cfg] = run_vlsi2024_xsr('baseline',2^18);
-[out,cfg] = run_vlsi2024_xsr('debug_1lane',4096);
-[out,cfg] = run_vlsi2024_xsr('loss_sweep',2^14);
-[out,cfg] = run_vlsi2024_xsr('static_checkpoint',2^14);
-[out,cfg] = run_vlsi2024_xsr('adaptation',2^14);
-[out,cfg] = run_vlsi2024_xsr('debug_link',4096,'Config',paperT);
-out = run_vlsi2024_regression('full',4096);
-ok = validate_vlsi2024_artifacts(fullfile(root,'results','vlsi2024_xsr'));
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+[out,cfgOut] = run_vlsi2024_xsr('baseline',nBits,'Config',cfg);
+disp(out.result);
+[out,cfgOut] = run_vlsi2024_xsr('debug_1lane',nBits,'Config',cfg);
+disp(out.result);
+[out,cfgOut] = run_vlsi2024_xsr('loss_sweep',nBits,'Config',cfg);
+disp(out.metrics);
+[out,cfgOut] = run_vlsi2024_xsr('static_checkpoint',nBits);
+disp(out.summary);
+[out,cfgOut] = run_vlsi2024_xsr('adaptation',nBits,'Config',cfg);
+disp(out.stateTrace);
+[out,cfgOut] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(out.trainedParameters);
+out = run_vlsi2024_regression('full',nBits);
+ok = validate_vlsi2024_artifacts(fullfile(root,'results','vlsi2024_xsr'),'ignore_summary');
+disp(ok);
 ~~~
 
 run_vlsi2024_xsr 的可选 name/value 是 nBits、enablePaperAdaptation、Config；第一个数值参数也可作为 nBits。run_vlsi2024_regression 只支持 full，可传数值 nBits 或 name/value nBits。validate_vlsi2024_artifacts 可额外传 ignore_summary 做 schema 检查而不要求 summary 全部为 1。
@@ -88,7 +107,7 @@ D2DPHY
       └─ Deserializer
 ~~~
 
-正式 VLSI paper path 在 RxLane 中设置 model.useReferenceAlign=false、model.trainingMode='decision_directed'。RxSupport.Pll 生成 jitter/recovered-clock 行为源，dspBbCdr/dspPiClock 负责 final decision-directed timing；它们不是门级 DLL/PI。
+正式 VLSI paper path 在 RxLane 中设置 model.useReferenceAlign=false、model.trainingMode='decision_directed'。实际 D2DPHY 链路由 RxSupport.Pll 生成/处理采样 jitter；TxSupport.Pll 当前没有被 TxPma.run 调用。dspBbCdr/dspPiClock 负责 final decision-directed timing；它们不是门级 DLL/PI。
 
 ### 2.2 bit 到 BER
 
@@ -97,7 +116,7 @@ D2DPHY
 3. 每个 lane 经过 Channel。paper mode 使用 dspChannel 的 analytic_il，在 refFreq_GHz=28、baud_GBd=56.25 处校准 lossAtRef_dB。
 4. D2DPHY.run 在 channel output 上按 link.seed 加入由 snr_dB 指定的 RMS 高斯噪声。
 5. RxPma 生成 jitter；RxLane 经过 Afe，再选择 legacy reference alignment、manual phase 或 BB-CDR。
-6. Slicer 保存 data/edge/spare roles，Deserializer 返回 rxBits；RawPcs.check 只在 BER checker 阶段将 rxBits 与 referenceBits 对比。
+6. Slicer 保存 data/edge/spare roles，Deserializer 返回 rxBits；dspBbCdr/dspPiClock 从不读取 referenceBits。每次 D2DPHY.run 都调用 RawPcs.check(rxBits,skipUI)，由 RawPcs 对象内部 referenceBits 作比较；debug_link 再以 berStartUI 调用同一 checker 重算 final Result。
 
 legacy alignment 使用 dspAlign 穷举 delay 和 phase 并读取 txBits；formal paper CDR 不使用这些 reference bits 更新相位。
 
@@ -244,8 +263,8 @@ rawPcs.pattern、rawPcs.errInject、channel.lossSweep_dB、model.debugOptions.pr
 
 | 按钮 | 实际动作 | 结果 |
 |---|---|---|
-| Apply + Sync | applyConfigTable(true) → syncD2DConfig(app.Cfg) | 写 base d2dCfg；默认还写 shared MAT，并更新已加载模型 workspace |
-| Load from Simulink | loadD2DSharedConfig() → validatePaperConfig | 按 Model Workspace、base、shared MAT、默认配置的优先级读回；不写 |
+| Apply + Sync | applyConfigTable(true) → 无 modelName 参数的 syncD2DConfig(app.Cfg) | 总写 base d2dCfg；默认 saveShared=true 写 shared MAT；仅 Simulink license 存在且默认模型 D2D_PHY_SI_Simulink 已加载时更新其 Model Workspace |
+| Load from Simulink | 无 modelName 参数的 loadD2DSharedConfig() → validatePaperConfig | 只有 Simulink license 存在且 D2D_PHY_SI_Simulink 已加载时才读其 Model Workspace，然后按 base、shared MAT、默认配置回退；不写 |
 | Run x8 Link | applyConfigTable(false) → run_vlsi2024_xsr('debug_link',nBits,'Config',cfg) | 训练型 in-memory debug；不写正式结果/共享快照 |
 | VLSI2024 Baseline | run_vlsi2024_xsr('baseline',nBits,'Config',cfg) | 写 baseline 和 CDR/PI/probe artifacts |
 | Static A-D / FFE / IL / AC-CTLE | run_vlsi2024_xsr('static_checkpoint',min(nBits,2^14),'Config',cfg) | 写 IL、3/6-tap、AC/CTLE、static artifacts |
@@ -270,7 +289,7 @@ run_vlsi2024_xsr('debug_link',nBits,'Config',requestedCfg) 的实际顺序是：
 5. 重新运行 x8 final model，formal path 强制 useReferenceAlign=false；
 6. 读取每 lane cdrTrace.lockIndex；
 7. 计算 final measurement window；全部 lane lock 后用一个 global latest-lock post-lock window；
-8. 只在 final window 对 RawPcs.referenceBits 计数，并输出 performance 和 trainedParameters。
+8. Final window 中对 rxBits 做 BER count，比较基准是 RawPcs 对象内部 referenceBits；D2DPHY.run 的早期检查也使用同一内部基准，referenceBits 从不参与 CDR/PI 相位更新。随后输出 performance 和 trainedParameters。
 
 debug link 内部将 stage.runTraining=true，所以五个训练 toggle 不由 model.enablePaperAdaptation 代替。model.enablePaperAdaptation 是单独的 background adaptation 配置；专用 adaptation mode 的 enablePaperAdaptation name/value 可显式控制它。
 
@@ -341,7 +360,7 @@ model.manualPhaseUI
 model.manualDelayUI
 ~~~
 
-当 CTLE trace 非空，最后附加 rxPma.lane.ctleBoost_dB[candidate_4.13]，其报告值为 requested=4.13、trained=4.13、applied=4.2、residual=0.07；这是 off-grid quantization evidence，不是正式 4.13 档位。
+当 CTLE trace 非空，最后附加 rxPma.lane.ctleBoost_dB[candidate_4.13]；candidate 行的 requested=4.13、candidate applied=4.2、candidate residual=0.07 只是 off-grid quantization evidence，不是最终 selected/trained/applied CTLE。最终值必须分别读取 trainedCfg.rxPma.lane.ctleBoost_dB、appliedCfg.rxPma.lane.ctleBoost_dB 和 final model 的 Afe.ctle.appliedBoost_dB。只有 adaptation mode（GUI Calibration / Adaptation 或 full regression 内部 adaptation）写 ctle_adaptation_trace.csv；debug_link 的 ctleTrace 只在内存，static_checkpoint 不写该文件。
 
 ### 5.4 CDR lock 和 global latest-lock window
 
@@ -382,8 +401,14 @@ totalWaitedUI = totalTrainingBudgetUI + berStartUI
 ### 6.1 Baseline
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
 cfg = phyConfig('vlsi2024_xsr_typical');
-[out,cfg] = run_vlsi2024_xsr('baseline',2^18,'Config',cfg);
+nBits = 2^18;
+cfg.link.nBits = nBits;
+[out,cfgOut] = run_vlsi2024_xsr('baseline',nBits,'Config',cfg);
 ~~~
 
 该模式写 results/vlsi2024_xsr/config.json、assumptions.md、baseline_metrics.csv、cdr_lock_trace.csv、pi_code_trace.csv、residual_phase_histogram.csv、plots/cdr_residual_phase.png 和 baseline_probes.mat。baseline 采用 formal useReferenceAlign=false，不是 legacy oracle alignment。
@@ -391,40 +416,82 @@ cfg = phyConfig('vlsi2024_xsr_typical');
 ### 6.2 Static checkpoints
 
 ~~~matlab
-[out,cfg] = run_vlsi2024_xsr('static_checkpoint',2^14);
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 2^14;
+cfg.link.nBits = nBits;
+[out,cfgOut] = run_vlsi2024_xsr('static_checkpoint',nBits,'Config',cfg);
+disp(out.summary);
 ~~~
 
 输出 channel_il_at_28GHz.csv、channel_response.csv、channel_il.csv、loss_sweep_metrics.csv、ffe_3_vs_6.csv、ac_ctle.csv、static_regression_summary.csv。static_checkpoint 内部使用默认 paper runner 子调用；需要自定义 cfg 时分别调用：
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
 cfg = phyConfig('vlsi2024_xsr_typical');
-[loss,cfg] = run_vlsi2024_xsr('loss_sweep',2^14,'Config',cfg);
-[base,cfg] = run_vlsi2024_xsr('baseline',2^14,'Config',cfg);
+nBits = 2^14;
+cfg.link.nBits = nBits;
+[loss,cfgOut] = run_vlsi2024_xsr('loss_sweep',nBits,'Config',cfg);
+[base,cfgOut] = run_vlsi2024_xsr('baseline',nBits,'Config',cfg);
 ~~~
 
 ### 6.3 Calibration / adaptation
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
 cfg = phyConfig('vlsi2024_xsr_typical');
-[out,cfg] = run_vlsi2024_xsr('adaptation',2^14,'Config',cfg);
+nBits = 2^14;
+cfg.link.nBits = nBits;
+[out,cfgOut] = run_vlsi2024_xsr('adaptation',nBits,'Config',cfg);
 ~~~
 
 adaptation runner 的有效训练样本为 min(cfg.link.nBits,2^14)，固定五状态 RESET、STARTUP_IMPEDANCE_CAL、CLOCK_CAL、INITIAL_EQ_TRAIN、MISSION_TRACK。objective 是 minimum adjacent decision-level margin；MISSION_TRACK 先引入 CTLE drift，再恢复训练后的控制。专用 adaptation mode 默认 enablePaperAdaptation=true；需要关闭行为时显式传 name/value：
 
 ~~~matlab
-[out,cfg] = run_vlsi2024_xsr('adaptation',4096,'Config',cfg,'enablePaperAdaptation',false);
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 4096;
+cfg.link.nBits = nBits;
+[out,cfgOut] = run_vlsi2024_xsr('adaptation',nBits,'Config',cfg,'enablePaperAdaptation',false);
+disp(out.stateTrace);
 ~~~
 
 ### 6.4 Full regression
 
 ~~~matlab
-out = run_vlsi2024_regression('full');
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 2^18;
+cfg.link.nBits = nBits;
+out = run_vlsi2024_regression('full',nBits);
 ~~~
 
 为了先做 smoke，可用：
 
 ~~~matlab
-out = run_vlsi2024_regression('full',4096);
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 4096;
+cfg.link.nBits = nBits;
+out = run_vlsi2024_regression('full',nBits);
 ~~~
 
 full runner 顺序为 baseline → static_checkpoint → baseline restore → adaptation → bounded jitter tolerance → paper comparison → fresh run_all_tests(legacyRoot) → validate_vlsi2024_artifacts。它会写全量 paper 结果和 results/vlsi2024_xsr/legacy_t1_t9。不要把 GUI 当前编辑 cfg 当作 full runner 的输入；当前函数签名没有 Config option。
@@ -432,6 +499,13 @@ full runner 顺序为 baseline → static_checkpoint → baseline restore → ad
 ### 6.5 T1–T9 兼容 CLI
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('ideal');
+nBits = 6000;
+cfg.link.nBits = nBits;
 summary = run_all_tests();
 summary = run_all_tests(fullfile(root,'results','vlsi2024_xsr','legacy_t1_t9'));
 ~~~
@@ -447,6 +521,11 @@ Simulink 是独立框图路径，MATLAB class/DSP 仍是算法源。顶层结构
 buildD2DSimulinkModel 的当前签名和 name/value：
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'simulink'));
+cfg = phyConfig('vlsi2024_xsr_typical');
 mdl = buildD2DSimulinkModel( ...
     'ModelName','D2D_PHY_SI_Simulink', ...
     'Open',true, ...
@@ -472,6 +551,10 @@ mdl = buildD2DSimulinkModel( ...
 builder 会把 Config 放入 MATLAB base workspace 和模型 Model Workspace，即使 Save=false 也会改变当前会话的 base d2dCfg；它不自动写 d2d_shared_config.mat。要安全做临时模型：
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'simulink'));
 cfg = phyConfig('vlsi2024_xsr_typical');
 tmp = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
     'ModelPath',fullfile(root,'simulink','stage_h_tmp.slx'), ...
@@ -483,6 +566,10 @@ tmp = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
 ### 7.4 同步流程
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'simulink'));
 cfg = phyConfig('vlsi2024_xsr_typical');
 syncD2DConfig(cfg,'D2D_PHY_SI_Simulink',true);
 cfgBack = loadD2DSharedConfig('D2D_PHY_SI_Simulink');
@@ -571,39 +658,402 @@ empirical_BER = errors / measured_bits
 9. 若需 GUI 演示，先用 Apply + Sync 发布已确认 cfg；再用 Run x8 Link 做不写盘 debug；正式证据动作最后执行。
 10. 若需 Simulink 演示，使用显式 Config 和临时 ModelName/ModelPath，先更新模型，再 Load from Simulink 做 round-trip 检查。
 
-## 10. 演示工况清单
+## 10. 可独立复制的演示工况
 
-以下每项都给出目的、设置、命令/GUI、预期趋势、查看位置和不能得出的结论。除明确写出 artifact 的项目外，debug_link 都是内存结果，不写正式结果。
+以下每项都给出目的、独立设置、完整命令或 GUI 步骤、预期趋势、查看位置和不能得出的结论。每个 MATLAB 示例都从 root、路径、cfg、nBits 开始；debug_link 只在内存运行，明确写出的 paper runner 才写 results/vlsi2024_xsr。
 
-| 演示 | 目的与设置 | 命令/GUI 步骤 | 预期趋势 | 查看 artifact/probe | 不能得出的结论 |
-|---|---|---|---|---|---|
-| Ideal vs Typical | 同一 paper schema 对比零损耗/零噪声与 nominal loss/noise/jitter | cfgI/cfgT 分别调用 debug_link；GUI 选择 VLSI Ideal/VLSI Typical 后 Run x8 Link | Ideal 波形、CTLE/AC/DAC impairment 更少；Typical 更能显示损耗和 jitter 影响；以 status/berValid 为准 | Debug.appliedCfg、performance.lane、RX CTLE output、TX DAC/pad、CDR lock | 不证明真实 PVT、silicon margin 或论文 BER |
-| loss sweep | 28 GHz analytic IL 0.5/2/4/6/8/10 dB | run_vlsi2024_xsr('loss_sweep',2^14,'Config',cfg)；或 GUI 的 Static action | measured_loss 接近 requested；损耗变大通常提高 ISI 压力，但 BER 是否单调须看本次 rows | loss_sweep_metrics.csv、channel_il_at_28GHz.csv、channel_response.csv、Channel output | 不证明长度到 IL 的真实映射、反射或 MIMO 串扰 |
-| 3 vs 6 tap | 观察 tap count 和 model-selected coefficients 的相对行为 | static_checkpoint；或 cfg 设 ffeMode='six_tap'、offsets/coeffs 后 debug_link | tapMeta offsets/coeffs 变化；6-tap 不保证优于 3-tap | ffe_3_vs_6.csv、trainedParameters、TX FFE output、tapMeta | 不声称系数来自论文，也不声称 6-tap 必然改善 |
-| DAC on/off | 对比 Driver 量化和 swing calibration | cfg.txPma.lane.enableDacQuantization=true/false，分别 debug_link | on 时 TX pad 落在 targetSwing 的离散 step；off 时无 dacMeta 量化 | Debug.appliedCfg、model.txPma.lane(1).driver.dacMeta、TX DAC/pad | 不推导 SST 段权重、7.5-bit 电路、功耗或真实 swing |
-| AC/DC 与 pre/post | 分离 terminationMode、AC pre 和 AC post 的影响 | 直接构造 cfgAc/cfgDc，分别 D2DPHY.configure/run；也可 GUI 改 AC/DC 与两个 enable | AC+enable 的 acPreOut/ acPostOut 不等于输入；DC 或关闭时相应路径旁路 | Afe.termOut、acPreOut、ctleRaw、acPostOut、ctleOut；static ac_ctle.csv | 不代表真实 transformer/leveling 电路频响 |
-| CTLE grid/off-grid | 检查 0–6 dB、0.2 dB 网格和训练候选 | GUI 将 ctleBoost_dB 改为 4.13 后 Run x8 Link；static action 扫 grid | requested 4.13 会 applied 4.2；网格行 applied 与请求一致 | trainedParameters candidate_4.13、ctle_adaptation_trace.csv、CTLE output | 不把 4.13 当正式档位，也不声称零极点是论文值 |
-| CDR on/off | 区分 formal BB-CDR 与 manual debug | c.model.debugStages.cdrEnabled/cdrOptions.enabled 设置四种合取组合后 debug_link；GUI 编辑两个开关 | 两者都 true 才 effectiveCdrEnabled=true；任一 false 为 debug_no_cdr，manual phase 生效 | Debug.status、effectiveCdrEnabled、fullLockTrace、PI code、CDR error、trainedParameters | no-CDR 结果不属于 formal paper BER，不能与 lock path 等价 |
-| no-lock | 验证无锁不能伪造 BER | cfg.model.cdrOptions.lockWindow=100000 后 debug_link | status=invalid_no_lock、berValid=false、Result.ber/errCnt 为 NaN | Debug.laneLocked、laneLockUI、fullLockTrace、stageTrace | 不把 NaN 改成 0，也不把 pre-lock 波形当性能 |
-| postLock | 检查 latest-lock 后等待量和统一起点 | 分别设置 debugStages.postLockWaitUI=0/32 后 debug_link | measurementStartUI 至少随 latestLock+postLockWaitUI 增大；所有 lane start 相同 | measurementStartUI/sample、berStartUIInFinalPass、totalWaitedUI、performance.lane | 不把 post-lock wait 当成物理 CDR settling time 的定量复现 |
-| training toggles/manual retention | 检查五个独立 toggle 关闭后的手动值保留 | 逐个将 startupCalibration、clockTraining、samplerCalibration、ctleTraining、ffeTraining=false，并设 gain/phase/offset/CTLE/FFE 手动值后 debug_link | 对应 stage skipped_manual_value、consumedUI=0；trainedCfg 保留该 stage 所有请求值 | stageTrace、trainedParameters requested/trained/applied、trainedCfg | 不说明关闭训练后链路仍具备硅校准能力 |
-| sampler offset | 检查 offset 进入 role probes 及校准归零 | 先 samplerCalibration=false、samplerOffsetCodes=0.25 debug；再打开 calibration 对照 | 关闭训练保留 0.25 code；开启训练目标为 0；level-shifted data/spare 可见变化 | Slicer levelShiftedSamples、dataDecisionInput、spareMonitorOutput、trainedParameters | 不估计真实 LOFF RDAC 分辨率、失调 sigma 或亚稳态 |
-| jitter | 观察 RJ/SJ 行为与 CDR residual context | run_vlsi2024_regression('full',2^14)；或 baseline Config 修改 rjUI_rms/djUI_pp | jitter 改变 Pll/采样时序；BER/residual 需结合 seed 和 finite sample 比较，不要求无条件单调 | jitter_tolerance.csv、cdr_lock_trace.csv、residual_phase_histogram.csv、CDR trace | 不复现 CEI mask、194 fs 测量滤波或 PVT 曲线 |
-| adaptation disturbance/recovery | 展示 startup/clock/equalization/mission 的受扰与恢复 | run_vlsi2024_xsr('adaptation',2^14,'Config',cfg)；GUI Calibration / Adaptation | RESET 后有 disturbed objective；MISSION_TRACK 的 recovered objective 应高于 disturbed objective；CTLE residual 在限制内 | adaptation_state_trace.csv、ctle_adaptation_trace.csv、Adaptation objective probe | 不把 objective recovery 写成 finite BER 优化或硅背景跟踪 |
-| x8 与 final full | 观察 lane lock 差异、统一 post-lock、正式 artifact | GUI Run x8 Link 查看 8 lane；再 Full VLSI2024 Regression 或 CLI full | x8 输出 laneLockUI/metrics；full 输出 regression_summary 与全量 required artifacts | MetricsTable、Debug.performance、regression_summary.csv、legacy_t1_t9 | 不把保存的 pass 或有限结果升级为论文 silicon sign-off |
+### D1：VLSI Ideal 对比 VLSI Typical
 
-一个最小 custom debug 示例：
+目的：在相同 paper schema 下隔离零损耗/零噪声参考和 nominal impairments。
 
 ~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
 cfg = phyConfig('vlsi2024_xsr_typical');
-cfg.link.nBits = 4096;
-cfg.model.debugStages.ctleTraining = false;
-cfg.rxPma.lane.ctleBoost_dB = 5;
-[out,~] = run_vlsi2024_xsr('debug_link',cfg.link.nBits,'Config',cfg);
-row = out.trainedParameters(strcmp(string(out.trainedParameters.parameterPath), ...
-    'rxPma.lane.ctleBoost_dB'),:);
-disp(row);
+nBits = 256;
+cfg.link.nBits = nBits;
+[outTypical,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+cfg = phyConfig('vlsi2024_xsr_ideal');
+nBits = 256;
+cfg.link.nBits = nBits;
+[outIdeal,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(outTypical.status);
+disp(outIdeal.status);
+disp([outTypical.berValid outIdeal.berValid]);
+disp(outTypical.appliedCfg.txPma.lane.enableDacQuantization);
+disp(outIdeal.appliedCfg.txPma.lane.enableDacQuantization);
 ~~~
+
+GUI 步骤：加入 src、test、gui 路径；执行 app = launchD2DWorkbench()；在 Paper preset 选择 VLSI Typical，点击 Run x8 Link，记录 StatusLabel、Metrics、CDR lock 和 RX CTLE output；再选择 VLSI Ideal，点击 Load Paper Preset 后再次 Run x8 Link。预期：Ideal 的 channel/noise/jitter/AC/DAC impairment 更少；具体 status 和 berValid 必须以返回值为准。查看 Debug.appliedCfg、Debug.performance.lane、TX DAC / pad、RX CTLE output 和 CDR lock。该对比不证明 PVT、silicon margin 或论文 BER。
+
+### D2：28 GHz analytic IL loss sweep
+
+目的：验证 28 GHz 标定插损和不同 loss 请求下的模型趋势。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 2^14;
+cfg.link.nBits = nBits;
+[out,~] = run_vlsi2024_xsr('loss_sweep',nBits,'Config',cfg);
+disp(out.metrics);
+disp(out.channelIL);
+il = readtable(fullfile(root,'results','vlsi2024_xsr','channel_response.csv'));
+disp(il(:,{'frequency_GHz','requested_loss_dB','measured_loss_dB','error_dB'}));
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 Static A-D / FFE / IL / AC-CTLE；到 results/vlsi2024_xsr 查看文件。预期 measured_loss 接近 requested_loss，损耗增大通常提高 ISI 压力，但 BER 是否单调必须查看本次 loss_sweep_metrics.csv。查看 loss_sweep_metrics.csv、channel_il_at_28GHz.csv、channel_response.csv 和 Channel output。该演示不证明长度到 IL 的真实映射、反射或 MIMO 串扰。
+
+### D3：signed 3-tap 与 6-tap
+
+目的：观察 tap count、offset 和 model-selected coefficients 的相对行为，避免把候选系数当作论文原始系数。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.txPma.lane.ffeMode = 'three_tap';
+cfg.txPma.lane.ffeOffsets = [-1 0 1];
+cfg.txPma.lane.ffeCoeffs = [-0.01 0.98 -0.01];
+[out3,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.txPma.lane.ffeMode = 'six_tap';
+cfg.txPma.lane.ffeOffsets = cfg.txPma.lane.sixTapPreset.offsets;
+cfg.txPma.lane.ffeCoeffs = cfg.txPma.lane.sixTapPreset.coeffs;
+[out6,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(out3.appliedCfg.txPma.lane.ffeCoeffs);
+disp(out6.appliedCfg.txPma.lane.ffeCoeffs);
+disp(out3.trainedParameters);
+disp(out6.trainedParameters);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；在 ffeMode、ffeOffsets、ffeCoeffs 行填入三抽头并 Run x8 Link；再填入 six_tap 及 sixTapPreset 的 offset/coeff 并 Run x8 Link。预期 tapMeta 的 offsets/coeffs 发生变化；6-tap 不保证 BER 或 eye 一定更好。若要生成正式 ffe_3_vs_6.csv，另执行 run_vlsi2024_xsr('static_checkpoint',2^14)。查看 Debug.trainedParameters、TX FFE output、model.txPma.lane(1).ffe.tapMeta 和 ffe_3_vs_6.csv。该演示不声称系数来自论文，也不声称 6-tap 必然改善。
+
+### D4：DAC quantization on/off
+
+目的：隔离 Driver 的 206-level 量化和 targetSwing calibration。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.txPma.lane.enableDacQuantization = true;
+[outOn,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.txPma.lane.enableDacQuantization = false;
+[outOff,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(outOn.model.txPma.lane(1).driver.dacMeta);
+disp(outOff.model.txPma.lane(1).driver.dacMeta);
+disp(outOn.appliedCfg.txPma.lane.enableDacQuantization);
+disp(outOff.appliedCfg.txPma.lane.enableDacQuantization);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 enableDacQuantization 设 true 后 Run x8 Link，记录 TX DAC / pad 和 Debug.appliedCfg；改为 false 后重新 Run x8 Link。预期 on 时 TX pad 被钳位并落在 targetSwing/(dacLevels−1) 的离散步长，off 时 dacMeta 只有 enabled=false、appliedLevels=0。查看 Driver.dacMeta 和 TX DAC / pad。该演示不推导 SST 段权重、7.5-bit 电路、功耗或真实电压 swing。
+
+### D5：AC/DC 与 AC pre/post
+
+目的：分离 termination mode、CTLE 前 AC 和 CTLE 后 AC 的行为。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 128;
+cfg.link.nBits = nBits;
+cfg.rxPma.lane.terminationMode = 'AC';
+cfg.rxPma.lane.enableAcPre = true;
+cfg.rxPma.lane.enableAcPost = true;
+phyAC = D2DPHY('ac_demo',1);
+phyAC.configure(cfg);
+resAC = phyAC.run();
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 128;
+cfg.link.nBits = nBits;
+cfg.rxPma.lane.terminationMode = 'DC';
+cfg.rxPma.lane.enableAcPre = true;
+cfg.rxPma.lane.enableAcPost = true;
+phyDC = D2DPHY('dc_demo',1);
+phyDC.configure(cfg);
+resDC = phyDC.run();
+disp(norm(phyAC.rxPma.lane(1).afe.acPreOut - phyAC.rxPma.lane(1).afe.termOut));
+disp(norm(phyDC.rxPma.lane(1).afe.acPreOut - phyDC.rxPma.lane(1).afe.termOut));
+disp(resAC.aggregateBer);
+disp(resDC.aggregateBer);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；依次改 terminationMode 为 AC/DC、enableAcPre/enableAcPost 为 true/false，每次点击 Run x8 Link；在右侧选择 RX termination、RX AC pre、RX CTLE output、RX AC post。预期 AC 且 enable 时相应波形变化，DC 或关闭开关时旁路；查看 Afe.termOut、acPreOut、ctleRaw、acPostOut、ctleOut。该演示不代表真实 transformer/leveling 电路频响。
+
+### D6：CTLE grid 与 off-grid candidate
+
+目的：展示 paper_grid 的 0.2 dB 网格，以及 4.13 仅是 candidate trace，不是最终选择值。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.model.debugStages.ctleTraining = true;
+cfg.rxPma.lane.ctleBoost_dB = 4.13;
+[out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+candidate = out.trainedParameters(contains(string(out.trainedParameters.parameterPath),'candidate_4.13'),:);
+finalRow = out.trainedParameters(strcmp(string(out.trainedParameters.parameterPath), ...
+    'rxPma.lane.ctleBoost_dB'),:);
+disp(candidate);
+disp(finalRow);
+disp(out.trainedCfg.rxPma.lane.ctleBoost_dB);
+disp(out.appliedCfg.rxPma.lane.ctleBoost_dB);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 ctleBoost_dB 改为 4.13；点击 Run x8 Link；在 trainedParameters 查看 candidate_4.13 与普通 ctleBoost_dB 两行。预期 candidate 行为 requested=4.13、candidate applied=4.2、candidate residual=0.07；最终 selected/trained/applied 值由 CTLE training objective 从网格和 FFE 候选中选择，必须读取 out.trainedCfg、out.appliedCfg 与最终 Afe.ctle.appliedBoost_dB。只有 run_vlsi2024_xsr('adaptation',...)、GUI Calibration / Adaptation 或 full regression 内部 adaptation 写 ctle_adaptation_trace.csv；static_checkpoint 不写该文件，debug_link 的 ctleTrace 只在内存。该演示不把 4.13 当正式档位，也不声称零极点是论文值。
+
+### D7：CDR on/off 的合取
+
+目的：确认 effective CDR 是 cdrEnabled 与 cdrOptions.enabled 的逻辑与，并区分 manual debug。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+combos = [true true; true false; false true; false false];
+for k = 1:size(combos,1)
+    cfg = phyConfig('vlsi2024_xsr_typical');
+    nBits = 256;
+    cfg.link.nBits = nBits;
+    cfg.model.debugStages.cdrEnabled = combos(k,1);
+    cfg.model.cdrOptions.enabled = combos(k,2);
+    cfg.model.manualPhaseUI = 0.5;
+    cfg.model.manualDelayUI = 0;
+    [out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+    disp([combos(k,:) out.effectiveCdrEnabled]);
+    disp(out.status);
+    disp(out.appliedCfg.model.cdrOptions.enabled);
+end
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；保持 VLSI Typical；分别编辑 model.debugStages.cdrEnabled 和 model.cdrOptions.enabled 的四种 true/false 组合，每次 Run x8 Link；观察 Status、CDR lock、PI code 和 manual phase。预期两者都 true 才 effectiveCdrEnabled=true；任一为 false 时 status=debug_no_cdr、useManualPhase=true，manualPhaseUI/manualDelayUI 生效。查看 Debug.status、effectiveCdrEnabled、fullLockTrace、PI code、CDR error 和 trainedParameters。no-CDR 结果不属于 formal paper BER，不能与 lock path 等价。
+
+### D8：no-lock invalid
+
+目的：用小样本和极大 lockWindow 明确制造“没有足够 UI 锁定”的 invalid_no_lock，而不是把 BER 当作 0。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.model.cdrOptions.lockWindow = 100000;
+[out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+assert(strcmp(out.status,'invalid_no_lock'));
+assert(~out.berValid);
+disp(out.status);
+disp(out.laneLocked);
+disp(out.result.ber);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；将 link.nBits 设 256、model.cdrOptions.lockWindow 设 100000；点击 Run x8 Link；查看 Status、Lane lock、BER。预期 status=invalid_no_lock、berValid=false、Result.ber/errCnt 为 NaN。查看 Debug.laneLocked、laneLockUI、fullLockTrace、stageTrace。不能把 NaN 改成 0，也不能把 pre-lock 波形当性能。
+
+### D9：postLock 与统一 measurement window
+
+目的：验证 latest lane lock 之后的全局等待和 measurementStartUI/sample。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+waitValues = [0 32];
+for k = 1:numel(waitValues)
+    cfg = phyConfig('vlsi2024_xsr_typical');
+    nBits = 256;
+    cfg.link.nBits = nBits;
+    cfg.model.debugStages.postLockWaitUI = waitValues(k);
+    [out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+    disp([waitValues(k) out.requiredLaneLockUI out.measurementStartUI ...
+        out.measurementStartSample out.totalWaitedUI]);
+    starts = arrayfun(@(x)x.measurementStartSample,out.performance.lane(:));
+    assert(all(starts == out.measurementStartSample));
+end
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；分别把 model.debugStages.postLockWaitUI 设为 0 和 32；每次点击 Run x8 Link；查看 Metrics 的 Lock UI、BER start UI、Waited UI。预期 measurementStartUI 不小于 latestLockUI+postLockWaitUI 与 originalSkipUI，且所有 lane 的 start 相同。查看 measurementStartUI、measurementStartSample、berStartUIInFinalPass、totalWaitedUI、Debug.performance.lane。post-lock wait 不等同于真实 CDR settling time 的定量复现。
+
+### D10：training toggles 与 manual retention
+
+目的：逐个关闭五个独立 training stage，确认 stageTrace 标记和 requested 手动值保留。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+toggleNames = {'startupCalibration','clockTraining','samplerCalibration','ctleTraining','ffeTraining'};
+for k = 1:numel(toggleNames)
+    cfg = phyConfig('vlsi2024_xsr_typical');
+    nBits = 128;
+    cfg.link.nBits = nBits;
+    cfg.model.debugStages.(toggleNames{k}) = false;
+    cfg.txPma.lane.gainError = 0.11;
+    cfg.rxPma.lane.termGain = 0.88;
+    cfg.model.cdrOptions.staticPhaseSkewUI = 0.07;
+    cfg.model.cdrOptions.staticDutyCorrectionUI = 0.03;
+    cfg.rxPma.lane.samplerRoles.samplerOffsetCodes = 0.25;
+    cfg.rxPma.lane.ctleBoost_dB = 5;
+    cfg.txPma.lane.ffeCoeffs = [-0.02 0.96 -0.02];
+    [out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+    row = strcmp(string(out.stageTrace.stage),strrep(toggleNames{k},'Calibration','_calibration'));
+    if strcmp(toggleNames{k},'ctleTraining'), row=strcmp(string(out.stageTrace.stage),'ctle_training'); end
+    if strcmp(toggleNames{k},'ffeTraining'), row=strcmp(string(out.stageTrace.stage),'ffe_training'); end
+    if strcmp(toggleNames{k},'samplerCalibration'), row=strcmp(string(out.stageTrace.stage),'sampler_calibration'); end
+    if strcmp(toggleNames{k},'clockTraining'), row=strcmp(string(out.stageTrace.stage),'clock_training'); end
+    disp(out.stageTrace(row,:));
+    disp(out.trainedCfg);
+end
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；每次只把 startupCalibration、clockTraining、samplerCalibration、ctleTraining 或 ffeTraining 中一个设为 false，同时输入对应 gain/phase/offset/CTLE/FFE 手动值；点击 Run x8 Link；在 stageTrace 和 trainedParameters 检查。预期对应行 status=skipped_manual_value、consumedUI=0，trainedCfg 保留该 stage 所有 requested 值。查看 stageTrace、trainedParameters 的 requested/trained/applied 和 trainedCfg。不能由此说明关闭训练后链路仍具备硅校准能力。
+
+### D11：sampler offset
+
+目的：观察 samplerOffsetCodes 如何进入 role probes，以及 samplerCalibration 如何归零。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.model.debugStages.samplerCalibration = false;
+cfg.rxPma.lane.samplerRoles.samplerOffsetCodes = 0.25;
+[outOff,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.model.debugStages.samplerCalibration = true;
+cfg.rxPma.lane.samplerRoles.samplerOffsetCodes = 0.25;
+[outOn,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(outOff.trainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes);
+disp(outOn.trainedCfg.rxPma.lane.samplerRoles.samplerOffsetCodes);
+disp(outOff.performance.lane(1).levelShiftedSamples(1:min(4,end),:));
+disp(outOff.performance.lane(1).spareSamples(1:min(4,end)));
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；先将 samplerCalibration=false、samplerOffsetCodes=0.25 后 Run x8 Link；再将 samplerCalibration=true 保持 offset=0.25 后 Run x8 Link；选择 RX level-shifted samples、RX data samples、RX spare samples。预期关闭训练保留 0.25 code，开启训练目标为 0；level-shifted data/spare probes 可见变化。不能估计真实 LOFF RDAC 分辨率、失调 sigma 或亚稳态。
+
+### D12：jitter 与 CDR residual
+
+目的：在不把论文 194 fs 或 CEI mask 当作模型输出的前提下观察 RJ/DJ 进入 sampling/CDR trace。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+cfg.link.rjUI_rms = 0.04;
+cfg.link.djUI_pp = 0.08;
+cfg.link.djFreq = 0.001;
+[out,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(out.status);
+disp(out.fullLockTrace{1}.residualPhaseUI(1:min(16,end)));
+disp(out.fullLockTrace{1}.piCodeTrace(1:min(16,end)));
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；修改 link.rjUI_rms、link.djUI_pp、link.djFreq；点击 Run x8 Link；选择 PI code、CDR error、CDR lock。若要写 jitter_tolerance.csv，另执行 run_vlsi2024_regression('full',2^14)，再读取该文件。预期 jitter 改变 sampling timing、residual 和可能的 lock/BER；比较必须固定 seed 与 measured_bits。不能由此复现 CEI mask、194 fs 的滤波测量或 PVT 曲线。
+
+### D13：adaptation disturbance/recovery
+
+目的：展示五状态 calibration/adaptation 的受扰与恢复，而不是以 BER 训练。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 2^14;
+cfg.link.nBits = nBits;
+[out,cfgOut] = run_vlsi2024_xsr('adaptation',nBits,'Config',cfg);
+disp(cfgOut.model.enablePaperAdaptation);
+disp(out.stateTrace(:,{'state','objective','disturbed_objective','recovered_objective','control_changed'}));
+disp(out.ctleTrace(:,{'requested_dB','applied_dB','residual_ctle_error_dB','recovered'}));
+stateFile = fullfile(root,'results','vlsi2024_xsr','adaptation_state_trace.csv');
+ctleFile = fullfile(root,'results','vlsi2024_xsr','ctle_adaptation_trace.csv');
+disp(readtable(stateFile));
+disp(readtable(ctleFile));
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 Calibration / Adaptation；等待 callback 完成后打开 results/vlsi2024_xsr 下两个 trace。预期 RESET 后出现 disturbed objective，MISSION_TRACK 的 recovered objective 高于 disturbed objective，CTLE residual 在限制内。查看 adaptation_state_trace.csv、ctle_adaptation_trace.csv 和 Adaptation objective。不能把 objective recovery 写成 finite BER 优化或硅背景跟踪。
+
+### D14：x8 debug 与 final full
+
+目的：先观察 8 lane lock/统一 post-lock，再生成正式全量 artifacts。
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+cfg = phyConfig('vlsi2024_xsr_typical');
+nBits = 256;
+cfg.link.nBits = nBits;
+[debugOut,~] = run_vlsi2024_xsr('debug_link',nBits,'Config',cfg);
+disp(debugOut.status);
+disp(debugOut.laneLockUI);
+disp(debugOut.measurementStartUI);
+disp(debugOut.measurementStartSample);
+disp(debugOut.result.berValid);
+disp(debugOut.trainedParameters);
+~~~
+
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 Run x8 Link；在 Metrics 选择 Aggregate/Lane 1–8，确认所有 lane 使用同一 BER start UI；再点击 Full VLSI2024 Regression。命令行正式 full：
+
+~~~matlab
+root = 'E:\Master_Record\D2D_matlab_model';
+cd(root);
+addpath(genpath(fullfile(root,'src')));
+addpath(fullfile(root,'test'));
+nBits = 4096;
+cfg = phyConfig('vlsi2024_xsr_typical');
+cfg.link.nBits = nBits;
+fullOut = run_vlsi2024_regression('full',nBits);
+resultRoot = fullOut.resultRoot;
+[ok,detail] = validate_vlsi2024_artifacts(resultRoot);
+disp(fullOut.summary);
+disp(ok);
+disp(detail);
+disp(readtable(fullfile(resultRoot,'regression_summary.csv')));
+~~~
+
+预期 debug 输出 laneLockUI、Metrics 和 global post-lock performance；full 输出 regression_summary.csv、paper comparison、jitter/adaptation/PI/IL artifacts 和 legacy_t1_t9。查看 MetricsTable、Debug.performance、regression_summary.csv 和 legacy_t1_t9。保存的 pass 或有限样本结果都不能升级为论文 silicon sign-off。
 
 ## 11. 常见错误与排障
 
@@ -616,7 +1066,7 @@ disp(row);
 | GUI Status Passed 但 BER 是 NaN | 看 Debug.status/berValid；invalid_no_lock、invalid_insufficient_bits、debug_no_cdr 都不是有效 BER |
 | 全 lane 没有 lock | 读 CDR error、transitionTrace、PI raw/wrapped/applied code、residualPhaseUI；调整 nBits、lockWindow、tolerance 仅作为模型实验 |
 | no-CDR 结果相位不对 | 检查 effective CDR 合取，使用 manualPhaseUI[0,1) 和整数 manualDelayUI |
-| CTLE 请求 4.13 与 applied 不同 | 这是 paper_grid round 到 4.2；检查 candidate_4.13 行，不要改成连续档位 |
+| CTLE 请求 4.13 与 applied 不同 | 这是 candidate 的 paper_grid round 到 4.2；candidate_4.13 不是最终 selected/trained/applied 值，检查 final trainedCfg/appliedCfg；不要改成连续档位 |
 | AC pre 没变化 | terminationMode 必须为 AC 且 enableAcPre=true；DC 模式强制旁路 |
 | static action 没采用当前 Config | 当前 static_checkpoint 内部 baseline/loss_sweep 不带 Config；用独立 baseline/loss_sweep Config 调用 |
 | full regression 没采用 GUI 编辑 | 当前 run_vlsi2024_regression('full',…) 没有 Config 参数；检查 config.json 的实际 runner profile |

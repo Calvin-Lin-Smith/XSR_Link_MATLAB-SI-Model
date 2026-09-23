@@ -7,6 +7,9 @@ Simulink 路径是独立的可视化 block diagram；MATLAB src/dsp 与 class mo
 需要 MATLAB R2024b 和 Simulink license。当前入口是 buildD2DSimulinkModel(varargin)：
 
 ~~~matlab
+cd('E:\Master_Record\D2D_matlab_model');
+addpath(genpath('src'));
+addpath('simulink');
 cfg = phyConfig('vlsi2024_xsr_typical');
 mdl = buildD2DSimulinkModel( ...
     'ModelName','D2D_PHY_SI_Simulink', ...
@@ -61,9 +64,9 @@ RX 的 ACPre/ACPost block 只有当 terminationMode='AC' 且对应 enableAcPre/e
 
 ## 共享配置安全
 
-builder 的 Config 为空时读取顺序是已加载模型 Model Workspace → MATLAB base d2dCfg → shared MAT → phyConfig() 默认值。无论 Save 是否为 false，builder 都会把 cfg 写入当前 MATLAB base workspace 和新模型 Model Workspace；Save=false 只是不保存 SLX，不能视为完全无副作用。
+builder 的 Config 为空时，只有在 Simulink license 存在且 ModelName 对应模型已加载时才读取该模型的 Model Workspace；随后回退到 MATLAB base d2dCfg → shared MAT → phyConfig() 默认值。无论 Save 是否为 false，builder 都会把 cfg 写入当前 MATLAB base workspace 和新模型 Model Workspace；Save=false 只是不保存 SLX，不能视为完全无副作用。
 
-GUI 侧只有 Apply + Sync 会调用 syncD2DConfig 并默认写 shared MAT。Run x8 Link 只在内存使用 requested cfg，不更新 Simulink。要从 Simulink 反读 GUI，请修改模型 Model Workspace 中的 paper d2dCfg，再点击 Load from Simulink。
+GUI 侧只有 Apply + Sync 会调用无 modelName 参数的 syncD2DConfig，目标默认模型为 D2D_PHY_SI_Simulink；只有 Simulink license 存在且该模型已加载时更新其 Model Workspace，并默认写 shared MAT。Run x8 Link 只在内存使用 requested cfg，不更新 Simulink。要从默认模型反读 GUI，请修改 D2D_PHY_SI_Simulink 的 Model Workspace 中的 paper d2dCfg，再点击 Load from Simulink；自定义模型名需从 CLI 传入对应的 modelName。
 
 ## 临时模型与验证
 

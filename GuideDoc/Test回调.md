@@ -6,8 +6,8 @@
 
 | GUI 操作 | MATLAB callback | 后端模式/函数 | 是否写正式结果 | 主要输入与输出 |
 |---|---|---|---|---|
-| Apply + Sync | app.applyConfigTable(true) → syncD2DConfig | 当前已验证 paper d2dCfg | 否（不写 formal results）；会写 base workspace、已加载模型的 Model Workspace 和 simulink/d2d_shared_config.mat | 输入编辑后的 paper 表；输出为 app.Cfg 与共享 d2dCfg |
-| Load from Simulink | app.loadSharedConfig() → loadD2DSharedConfig | 加载优先级：Model Workspace → base d2dCfg →共享 MAT→默认配置 | 不写 | 输入当前会话/共享快照；输出刷新 app.Cfg 和参数表 |
+| Apply + Sync | app.applyConfigTable(true) → syncD2DConfig | 当前已验证 paper d2dCfg，默认 modelName=D2D_PHY_SI_Simulink | 否（不写 formal results）；总会写 base workspace，saveShared=true 时写 simulink/d2d_shared_config.mat；仅在 Simulink license 存在且默认模型已加载时写 Model Workspace | 输入编辑后的 paper 表；输出为 app.Cfg 与共享 d2dCfg |
+| Load from Simulink | app.loadSharedConfig() → loadD2DSharedConfig | 默认读取 modelName=D2D_PHY_SI_Simulink；只有 Simulink license 存在且该模型已加载时读取其 Model Workspace | 不写 | 输入当前默认模型/会话/共享快照；输出刷新 app.Cfg 和参数表 |
 | Run x8 Link | app.runLink() → run_vlsi2024_xsr('debug_link',…) | 单次训练型 x8 in-memory debug link | 否，不写正式 paper results、共享 MAT 或已跟踪 SLX | 输入 requested paper cfg；输出 Debug、Result、Phy、trainedParameters、post-lock probes |
 | VLSI2024 Baseline | app.runPaperBaseline() | run_vlsi2024_xsr('baseline',nBits,'Config',cfg) | 是，更新 results/vlsi2024_xsr | 输出 baseline_metrics.csv、CDR/PI trace、baseline_probes.mat、config.json 等 |
 | Static A-D / FFE / IL / AC-CTLE | app.runPaperStatic() | run_vlsi2024_xsr('static_checkpoint',min(nBits,2^14),'Config',cfg) | 是，更新静态检查点结果 | 输出 channel IL、3/6-tap、AC/CTLE、static summary |
@@ -15,22 +15,22 @@
 | Calibration / Adaptation | app.runPaperAdaptation() | run_vlsi2024_xsr('adaptation',min(nBits,2^14),'Config',cfg) | 是，更新 adaptation_state_trace.csv、ctle_adaptation_trace.csv、config.json | 输出五状态 trace 和 CTLE 候选 trace |
 | Full VLSI2024 Regression | app.runPaperRegression() | run_vlsi2024_regression('full',cfg.link.nBits) | 是，完整 paper 结果和 legacy_t1_t9 | 输出 regression_summary.csv 及验证器要求的全部文件 |
 
-Paper actions 均经 app.execute 包装：状态标签显示 Running/Passed/Failed，异常写入 LogArea，并用 uialert 提示。Passed 只表示 callback 没有抛出异常；Run x8 Link 的结果状态仍须看 Debug.status 和 Result.berValid。Open Paper Results 只是打开结果目录，Clear Log 只是清空日志，不是测量动作。
+Run x8 Link、Baseline、Static、Evidence、Adaptation 和 Full Regression 经 app.execute 包装：状态标签显示 Running/Passed/Failed，异常写入 LogArea，并用 uialert 提示。Apply + Sync、Load from Simulink 和两个 utility button 不经该包装。Passed 只表示 callback 没有抛出异常；Run x8 Link 的结果状态仍须看 Debug.status 和 Result.berValid。Open Paper Results 只是打开结果目录，Clear Log 只是清空日志，不是测量动作。
 
 ## 配置编辑与同步
 
 参数表由 D2DWorkbench.paperConfigPaths() 生成。Cell edit 先在候选结构上解析、校验，成功后才替换 app.Cfg；失败时恢复上一份有效表并记录 Invalid paper control。校验失败不会部分写入 requested cfg。
 
-Apply + Sync 调用 syncD2DConfig(cfg)。该函数总会把 d2dCfg 放入 MATLAB base workspace；saveShared 为 true 时写入 simulink/d2d_shared_config.mat；如果指定模型已加载且有 Simulink license，还会更新其 Model Workspace。Run x8 Link 只调用 applyConfigTable(false)，因此只改变 app.Cfg，不触发同步。
+Apply + Sync 调用无 modelName 参数的 syncD2DConfig(cfg)，因此使用默认模型 D2D_PHY_SI_Simulink。该函数总会把 d2dCfg 放入 MATLAB base workspace；saveShared 为 true 时写入 simulink/d2d_shared_config.mat；只有 Simulink license 存在且 D2D_PHY_SI_Simulink 已加载时，才更新该模型的 Model Workspace。Run x8 Link 只调用 applyConfigTable(false)，因此只改变 app.Cfg，不触发同步。自定义模型名不会被 GUI 自动发现；请从 CLI 传给 syncD2DConfig(cfg,'MyModel',...) 或 loadD2DSharedConfig('MyModel')。
 
-Load from Simulink 使用 loadD2DSharedConfig() 的固定优先级：
+Load from Simulink 使用默认 modelName 的 loadD2DSharedConfig()；只有 Simulink license 存在且 D2D_PHY_SI_Simulink 已加载时才启用第一项。固定优先级：
 
-1. 已加载模型的 Model Workspace 中的 d2dCfg；
+1. 默认模型 D2D_PHY_SI_Simulink 的 Model Workspace 中的 d2dCfg；
 2. MATLAB base workspace 中的 d2dCfg；
 3. simulink/d2d_shared_config.mat；
 4. phyConfig() 默认配置。
 
-读回后必须通过 validatePaperConfig：paper.id 必须是 VLSI2024_XSR_3nm、preset 必须是 VLSI Typical 或 VLSI Ideal、signed FFE offsets 必须唯一且包含 0、PAM4 thresholdAssumptions 必须有 3 个值。其他 schema 会被拒绝。
+读回后会通过 D2DWorkbench.validatePaperConfig。当前源码只断言 paper.id、paper.preset、model.debugStages 存在，FFE offsets 与 coeffs 等长且 offsets 唯一/含 0，以及 PAM4 thresholdAssumptions 长度为 3；参数表 cell parser 另行检查类型和若干范围。这不是完整 schema validator；结果目录的完整文件/字段契约由 validate_vlsi2024_artifacts(root[, 'ignore_summary']) 负责。
 
 ## Run x8 Link 的真实时序
 
@@ -53,10 +53,10 @@ stageTrace 是表格，列为 stage、status、enabled、trainingBudgetUI、cons
 
 对启用 CDR 的 x8 link：
 
-1. 每个 lane 的 RxLane 通过 dspBbCdr，只看接收波形和此前的 data decision；TX referenceBits 只在最终 RawPcs.check 中使用。
+1. 每个 lane 的 RxLane 通过 dspBbCdr，只看接收波形和此前的 data decision；dspBbCdr/dspPiClock 的相位更新从不读取 referenceBits。
 2. lockIndex 来自 dspBbCdr：最近 lockWindow 个 UI 至少有 minTransitions 个转换，transition residual 不超过 lockToleranceUI，PI code span 不超过 maxCodeSpanCodes。
 3. 所有 lane 锁定时，latestLockUI = max(laneLockUI(laneLocked))。
-4. final BER 起点为 berStartUI = max(originalSkipUI, latestLockUI + postLockWaitUI)；这就是最新锁定 lane 之后的一个全局等待窗口，不是每 lane 各自裁剪。
+4. final BER 起点为 berStartUI = max(originalSkipUI, latestLockUI + postLockWaitUI)；这就是最新锁定 lane 之后的一个全局等待窗口，不是每 lane 各自裁剪。每次 D2DPHY.run 内部先调用 RawPcs.check(rxBits,skipUI)，该方法将 rxBits 与对象内部 referenceBits 比较；debug_link 再用 berStartUI 调用同一个 checker 重算 final Result。
 5. 样本下标采用 MATLAB 一基编号：measurementStartSample = measurementStartUI*sps + 1。data/edge/spare/level-shifted sample 从同一 UI 边界裁剪；CTLE 波形从该 sample 裁剪。
 6. eye height、sample-level distribution、ISI/margin、BER 全部只由此窗口计算。完整 acquisition、CDR lock、PI trace 可用于诊断，但 pre-lock 数据不能进入性能结论。
 
@@ -118,7 +118,7 @@ model.manualDelayUI
 rxPma.lane.ctleBoost_dB[candidate_4.13]
 ~~~
 
-candidate_4.13 的固定报告值是 requested/trained 4.13、applied 4.2、residual 0.07；它是 off-grid quantization evidence，不是论文额外档位。
+candidate_4.13 的固定 trace 行报告 requested=4.13、candidate applied=4.2、candidate residual=0.07；它只是 CTLE training 的 off-grid quantization evidence，不代表最终 selected/trained/applied CTLE。最终值要分别看 trainedCfg.rxPma.lane.ctleBoost_dB、appliedCfg.rxPma.lane.ctleBoost_dB 和 final model 的 Afe.ctle.appliedBoost_dB。只有 adaptation mode 生成 ctle_adaptation_trace.csv；debug_link 的 ctleTrace 只在内存中，static_checkpoint 不生成该文件。
 
 ## 其他 paper action 的输出和异常
 
@@ -144,7 +144,7 @@ GUI 的 evidence callback 实际调用 run_vlsi2024_regression('full',boundedBit
 
 ### Calibration / Adaptation
 
-adaptation runner 的状态顺序固定为 RESET → STARTUP_IMPEDANCE_CAL → CLOCK_CAL → INITIAL_EQ_TRAIN → MISSION_TRACK。它将训练样本数限制为 min(link.nBits,2^14)，目标是 minimum adjacent decision-level margin，不以有限 BER 为优化目标；MISSION_TRACK 先施加 CTLE drift，再恢复已选控制。adaptation_state_trace.csv 和 ctle_adaptation_trace.csv 是正式 trace。
+adaptation runner 的状态顺序固定为 RESET → STARTUP_IMPEDANCE_CAL → CLOCK_CAL → INITIAL_EQ_TRAIN → MISSION_TRACK。它将训练样本数限制为 min(link.nBits,2^14)，目标是 minimum adjacent decision-level margin，不以有限 BER 为优化目标；MISSION_TRACK 先施加 CTLE drift，再恢复已选控制。只有 run_vlsi2024_xsr('adaptation',...)（以及 GUI Calibration / Adaptation，或 full regression 内部的 adaptation）写 adaptation_state_trace.csv 和 ctle_adaptation_trace.csv；static_checkpoint 只写 ac_ctle.csv 等静态文件，不生成 ctle_adaptation_trace.csv。
 
 ## T1–T9 兼容回归（仅 CLI）
 
