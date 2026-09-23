@@ -561,7 +561,7 @@ tmp = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
     'Config',cfg,'Open',false,'Save',true,'Overwrite',false);
 ~~~
 
-完成检查后由调用者清理临时 SLX；不要用临时模型名覆盖 tracked D2D_PHY_SI_Simulink.slx。Apply + Sync 才会写 shared MAT；Load from Simulink 只读。
+完成检查后由调用者清理临时 SLX；不要用临时模型名覆盖 tracked D2D_PHY_SI_Simulink.slx。该临时/custom 模型不能用 GUI 的无参 Load from Simulink 做 round-trip：GUI 只针对默认 D2D_PHY_SI_Simulink。临时/custom 模型请用 CLI loadD2DSharedConfig(customName) 或 evalin(get_param(customName,'ModelWorkspace'),'d2dCfg') 检查。Apply + Sync 才会写 shared MAT；Load from Simulink 只读。
 
 ### 7.4 同步流程
 
@@ -656,7 +656,7 @@ empirical_BER = errors / measured_bits
 7. 运行 validate_vlsi2024_artifacts(resultRoot)，逐项核对 required files、CSV columns、UCB、PI trace、adaptation residual、legacy summary/JUnit。
 8. 阅读 paper_comparison.csv/md 和 assumptions.md，把论文事实、模型输出、模型假设、未建模项分开写入报告。
 9. 若需 GUI 演示，先用 Apply + Sync 发布已确认 cfg；再用 Run x8 Link 做不写盘 debug；正式证据动作最后执行。
-10. 若需 Simulink 演示，使用显式 Config 和临时 ModelName/ModelPath，先更新模型，再 Load from Simulink 做 round-trip 检查。
+10. 若需 Simulink 演示且目标是 GUI round-trip，必须使用默认模型 D2D_PHY_SI_Simulink，并在有 Simulink license 且模型已加载时先更新其 Model Workspace，再点 GUI Load from Simulink。临时或 custom ModelName/ModelPath 只用 CLI 的 loadD2DSharedConfig(customName) 或直接检查对应 Model Workspace；GUI 不会自动发现它们。
 
 ## 10. 可独立复制的演示工况
 
@@ -904,7 +904,14 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；分别把
 
 ### D10：training toggles 与 manual retention
 
-目的：逐个关闭五个独立 training stage，确认 stageTrace 标记和 requested 手动值保留。
+目的：逐个关闭五个独立 training stage，确认 stageTrace 标记和 requested 手动值保留。GUI 与 CLI 的输入边界如下：
+
+| 输入来源 | 本演示可设置的字段 |
+|---|---|
+| GUI paper table | 五个 debugStages toggle；txPma.lane.gainError、rxPma.lane.termGain、rxPma.lane.samplerRoles.samplerOffsetCodes、rxPma.lane.ctleBoost_dB、txPma.lane.ffeCoeffs 等可见行 |
+| CLI Config only | model.cdrOptions.staticPhaseSkewUI、model.cdrOptions.staticDutyCorrectionUI；它们不在 GUI 的 paperConfigPaths 参数表中 |
+
+下面 CLI 示例显式设置两项 runtime/backend 字段，GUI 步骤不要求用户输入不存在的字段。
 
 ~~~matlab
 root = 'E:\Master_Record\D2D_matlab_model';
@@ -935,7 +942,7 @@ for k = 1:numel(toggleNames)
 end
 ~~~
 
-GUI 步骤：执行 app = launchD2DWorkbench()；每次只把 startupCalibration、clockTraining、samplerCalibration、ctleTraining 或 ffeTraining 中一个设为 false，同时输入对应 gain/phase/offset/CTLE/FFE 手动值；点击 Run x8 Link；在 stageTrace 和 trainedParameters 检查。预期对应行 status=skipped_manual_value、consumedUI=0，trainedCfg 保留该 stage 所有 requested 值。查看 stageTrace、trainedParameters 的 requested/trained/applied 和 trainedCfg。不能由此说明关闭训练后链路仍具备硅校准能力。
+GUI 步骤：执行 app = launchD2DWorkbench()；每次只把 startupCalibration、clockTraining、samplerCalibration、ctleTraining 或 ffeTraining 中一个设为 false；仅在 GUI 可见的参数行输入对应 gain/term、sampler offset、CTLE 或 FFE 手动值，staticPhaseSkewUI/staticDutyCorrectionUI 不在 GUI 表中，需用上面的 CLI Config 示例设置；点击 Run x8 Link；在 stageTrace 和 trainedParameters 检查。预期对应行 status=skipped_manual_value、consumedUI=0，trainedCfg 保留该 stage 所有 requested 值。查看 stageTrace、trainedParameters 的 requested/trained/applied 和 trainedCfg。不能由此说明关闭训练后链路仍具备硅校准能力。
 
 ### D11：sampler offset
 

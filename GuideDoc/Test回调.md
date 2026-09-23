@@ -69,7 +69,7 @@ stageTrace 是表格，列为 stage、status、enabled、trainingBudgetUI、cons
 | trained | CDR 有效且 8 lane 全部 lock，且 final window 有足够 bits | true；Result 使用 berStartUI 重新计数 |
 | invalid_no_lock | CDR 有效但至少一个 lane 未 lock | false；errCnt/ber 为 NaN，nMeasured 为 0 |
 | invalid_insufficient_bits | 全部 lock，但 berStartUI 后没有足够 bits | false；BER 无效 |
-| debug_no_cdr | CDR 关闭或 cdrOptions.enabled 为 false | false；使用 manualPhaseUI/manualDelayUI 进行 debug，但不形成 formal paper BER |
+| debug_no_cdr | effective CDR = model.debugStages.cdrEnabled && model.cdrOptions.enabled；任一为 false，进入 fixed/manual path | false；使用 manualPhaseUI/manualDelayUI 进行 debug，但不形成 formal paper BER |
 
 若设置 model.debugOptions.preLockSentinel，backend 只为诊断把窗口之前的 probe 和 raw bit 改成 sentinel；performance window 不应包含 sentinel。这是 test_stage_h.m 检查的边界。
 
