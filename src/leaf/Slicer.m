@@ -25,6 +25,12 @@ classdef Slicer < Blk
         spareSamples = []
         spareMonitorOutput = []
         samplerOffsetCodes = 0
+        rawInput = []
+        rawSamples = []
+        logicalSamples = []
+        levelingMeta = struct()
+        levelingEnabled = false
+        levelingOptions = struct()
     end
     methods
         function obj=Slicer(name), if nargin<1,name='slicer';end, obj@Blk(name); end
@@ -34,6 +40,10 @@ classdef Slicer < Blk
             obj.comparatorThresholds=[]; obj.quarterRateBranches=4;
             if strcmpi(char(c.modulation),'PAM4'), obj.comparatorThresholds=dspPam4Contract().thresholds; end
             obj.samplerOffsetCodes=0;
+            obj.rawInput=[]; obj.rawSamples=[]; obj.logicalSamples=[]; obj.levelingMeta=struct(); obj.levelingEnabled=false; obj.levelingOptions=struct();
+            if isfield(c,'levelingEnabled'), obj.levelingEnabled=logical(c.levelingEnabled); end
+            if isfield(c,'enablePam4Leveling'), obj.levelingEnabled=logical(c.enablePam4Leveling); end
+            if isfield(c,'levelingOptions'), obj.levelingOptions=c.levelingOptions; end
             if isfield(c,'samplerRoles')
                 r=c.samplerRoles; if isfield(r,'enabled'), obj.samplerRolesEnabled=logical(r.enabled); end
                 if isfield(r,'quarterRateBranches'), obj.quarterRateBranches=r.quarterRateBranches; end
@@ -48,7 +58,12 @@ classdef Slicer < Blk
             validateattributes(obj.samplerOffsetCodes,{'numeric'},{'scalar','real','finite'});
         end
         function bits=run(obj,x)
-            x=x(:); [v,~,~]=dspSample(x,obj.phase,obj.delayUI,obj.sps,obj.jitterUI);
+            x=x(:); [v,~,~]=dspSample(x,obj.phase,obj.delayUI,obj.sps,obj.jitterUI); obj.rawInput=x; obj.rawSamples=v;
+            obj.levelingMeta=struct('levelsValid',~strcmpi(char(obj.modulation),'PAM4'),'rawSamples',v,'logicalSamples',v);
+            if obj.levelingEnabled && strcmpi(char(obj.modulation),'PAM4')
+                [v,obj.levelingMeta]=dspPam4Leveling(v,obj.levelingOptions);
+            end
+            obj.logicalSamples=v;
             if obj.samplerRolesEnabled
                 dataCodes=obj.levelShiftCodes.data(:).'; if isempty(dataCodes), dataCodes=0; end
                 obj.levelShiftedSamples=v+dataCodes+obj.samplerOffsetCodes;
@@ -78,6 +93,7 @@ classdef Slicer < Blk
             obj.log.spareSamples=obj.spareSamples; obj.log.spareMonitorOutput=obj.spareMonitorOutput;
             obj.log.levelShiftedSamples=obj.levelShiftedSamples; obj.log.dataDecisionInput=obj.dataDecisionInput;
             obj.log.edgeLevelShiftedSamples=obj.edgeLevelShiftedSamples; obj.log.spareLevelShiftedSamples=obj.spareLevelShiftedSamples;
+            obj.log.rawSamples=obj.rawSamples; obj.log.logicalSamples=obj.logicalSamples; obj.log.levelingMeta=obj.levelingMeta;
         end
     end
 end

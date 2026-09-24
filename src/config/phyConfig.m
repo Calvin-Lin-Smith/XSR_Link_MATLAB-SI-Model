@@ -70,6 +70,7 @@ switch profile
             'samplerOffsetCodes',0,...
             'thresholdAssumptions',[-2 0 2],...
             'offsetCalibrationPlaceholder','not implemented in Stage D');
+        cfg.rxPma.lane.enablePam4Leveling=true; cfg.rxPma.lane.levelingOptions=struct('minOccupancy',0.02);
         cfg.model.useReferenceAlign=false; cfg.model.useManualPhase=false; cfg.model.manualPhaseUI=0.5; cfg.model.manualDelayUI=0;
         cfg.model.enablePaperAdaptation=false;
         cfg.model.trainingMode='decision_directed';
