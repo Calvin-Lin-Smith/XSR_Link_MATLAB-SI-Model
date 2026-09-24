@@ -157,8 +157,7 @@ if strcmp(direction,'tx')
         ffeCode=['dspFfe(u,d2dCfg.txPma.lane.txEqMain,d2dCfg.txPma.lane.txEqPre,' ...
             'd2dCfg.txPma.lane.txEqPost,d2dCfg.txPma.lane.ffeNormalize)'];
     end
-    if isfield(cfg.txPma.lane,'targetSwing'), dacCode='d2dCfg.txPma.lane.targetSwing*u';
-    else, dacCode='d2dCfg.txPma.lane.amplitude*u'; end
+    dacCode='u';
     code={ffeCode,...
         'repelem(u,d2dCfg.link.sps)',...
         dacCode};

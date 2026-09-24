@@ -32,6 +32,7 @@ classdef Slicer < Blk
             configure@Blk(obj,c); obj.modulation=c.modulation; obj.sps=c.sps; obj.samplerRolesEnabled=false;
             obj.samplerRoleCounts=struct('data',0,'edge',0,'spare',0); obj.levelShiftCodes=struct('data',[],'edge',[],'spare',[]);
             obj.comparatorThresholds=[]; obj.quarterRateBranches=4;
+            if strcmpi(char(c.modulation),'PAM4'), obj.comparatorThresholds=dspPam4Contract().thresholds; end
             obj.samplerOffsetCodes=0;
             if isfield(c,'samplerRoles')
                 r=c.samplerRoles; if isfield(r,'enabled'), obj.samplerRolesEnabled=logical(r.enabled); end
@@ -86,8 +87,7 @@ if isempty(thresholds), bits=dspSlice(y,modulation); return; end
 switch upper(char(modulation))
     case 'PAM4'
         if numel(thresholds)~=3, error('Slicer:Thresholds','PAM4 requires three comparator thresholds.'); end
-        syms=-3*ones(size(y)); syms(y>=thresholds(1))=-1; syms(y>=thresholds(2))=1; syms(y>=thresholds(3))=3;
-        lut=[0 0;0 1;1 0;1 1]; bits=reshape(lut(((syms+3)/2)+1,:).',[],1);
+        c=dspPam4Contract(); idx=1+sum(y(:)>=thresholds(:).',2); bits=reshape(c.bitPairs(idx,:).',[],1);
     case 'NRZ'
         bits=double(y>=thresholds(1));
     otherwise

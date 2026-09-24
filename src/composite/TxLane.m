@@ -21,7 +21,7 @@ classdef TxLane < Blk
             end
             obj.ffe.configure(fc); obj.serializer.configure(struct('sps',c.sps));
             dc=struct('amplitude',c.amplitude);
-            names={'enableDacQuantization','dacLevels','targetSwing','gainError','enableSwingCalibration'};
+            names={'enableDacQuantization','dacLevels','targetSwing','gainError','enableSwingCalibration','logicalOuterLevel'};
             for k=1:numel(names), if isfield(c,names{k}), dc.(names{k})=c.(names{k}); end, end
             obj.driver.configure(dc);
         end

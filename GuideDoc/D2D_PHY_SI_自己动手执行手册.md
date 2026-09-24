@@ -161,13 +161,13 @@ end
 
 ```matlab
 function [syms, bps] = mapSymbols(bits, p)
-% 比特 -> 符号。PAM4: 2 比特/符号，编码 §7.3（+3=11, +1=10, -1=01, -3=00）
+% 比特 -> 符号。PAM4: 2 比特/符号，唯一 Gray contract（00=-3, 01=-1, 11=+1, 10=+3）
 if strcmp(p.modulation, 'PAM4')
     bps = 2;
     nSym = floor(numel(bits)/bps);
-    pairs = reshape(bits(1:nSym*bps), bps, nSym);  % 行1=MSB, 行2=LSB
-    v = 2*pairs(1,:) + pairs(2,:);                  % 11->3, 10->2, 01->1, 00->0
-    syms = (2*v - 3)';                              % 3->+3, 2->+1, 1->-1, 0->-3
+    pairs = reshape(bits(1:nSym*bps), bps, nSym)';
+    c = dspPam4Contract(); [~,idx] = ismember(pairs,c.bitPairs,'rows');
+    syms = c.levels(idx)';
 else
     bps = 1;
     syms = 2*bits(:) - 1;                           % 0->-1, 1->+1
@@ -253,18 +253,15 @@ end
 
 ```matlab
 function bits = slice(yDec, p)
-% 判决：PAM4 阈值 -2,0,+2；NRZ 阈值 0；再按 §7.3 编码回比特
+% 判决：PAM4 阈值 -2,0,+2；NRZ 阈值 0；按 Gray contract 编码回比特
 if strcmp(p.modulation, 'PAM4')
     v = yDec(:);
-    sym = -3*ones(size(v));
-    sym(v >= -2) = -1;
-    sym(v >=  0) =  1;
-    sym(v >=  2) =  3;
+    c = dspPam4Contract(); idx = 1 + sum(v >= c.thresholds,2); sym = c.levels(idx)';
     bits = zeros(2*numel(sym), 1);
     for k = 1:numel(sym)
         switch sym(k)
-            case  3, b = [1 1];
-            case  1, b = [1 0];
+            case  3, b = [1 0];
+            case  1, b = [1 1];
             case -1, b = [0 1];
             otherwise, b = [0 0];
         end
@@ -635,7 +632,7 @@ disp('环境 OK');
 ✅ 最小自测：
 ```matlab
 dspChannel(sin((0:1000)'/32),32,0,3)   % 0dB -> 与输入几乎一致
-dspMap([1 1 1 0 0 1 0 0]','PAM4')'     % 预期 [3 1 -1 -3]
+dspMap([0 0 0 1 1 1 1 0]','PAM4')'     % 预期 [-3 -1 1 3]
 dspFfe([-3 -1 1 3]',1,0,0,true)        % pre=post=0 -> 原样
 ```
 

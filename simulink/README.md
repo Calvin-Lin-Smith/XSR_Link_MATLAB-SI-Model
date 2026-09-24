@@ -42,7 +42,7 @@ TX Bits → Raw PCS → TX PMA x8 → Die-to-Die Channel x8
         → RX PMA x8 → BER_Results → RX Bits
 ~~~
 
-TX lane 包含 FFE vector、Serializer、DAC/Driver；Channel lane 调用 dspChannel；RX lane 展开 AFE TERM、AC pre、CTLE、AC post、Sampler roles、Sampler、Slicer、Deserializer。Interpreted MATLAB Function block 读取 d2dCfg 并调用 src/dsp 函数。
+TX lane 包含 FFE vector、Serializer、DAC/Driver；Channel lane 调用 dspChannel；RX lane 展开 AFE TERM、AC pre、CTLE、AC post、Sampler roles、Sampler、Slicer、Deserializer。Interpreted MATLAB Function block 读取 d2dCfg 并调用 src/dsp 函数；PAM4 使用唯一 Gray contract `00→−3、01→−1、11→+1、10→+3`，TX DAC block 保持 logical units。
 
 ## Paper 与 legacy 配置
 

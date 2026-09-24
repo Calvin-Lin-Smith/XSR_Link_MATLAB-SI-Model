@@ -59,7 +59,7 @@ Raw PCS(软宏,RTL) ──> TX PMA(3-tap FFE + 电流模驱动) ──> 信道(�
 | P2 | 波特率 | 1.75–112 GSps | §1.3 | 采样率设定 |
 | P3 | PLL 时钟 | 7–14 GHz | §5.5 Table 5-5 | 时钟域换算 |
 | P4 | 速率模式 | quarter/half/full + 2x/4x 过采样 | §5.5 | 每 UI 样本数 |
-| P5 | PAM4 电平 | +3 / +1 / −1 / −3（编码 11/10/01/00） | §7.3 Table 7-2 | 符号映射/判决阈值 |
+| P5 | PAM4 电平 | −3 / −1 / +1 / +3（Gray 编码 00/01/11/10） | VLSI2024 PAM4 contract | 符号映射/判决阈值 |
 | P6 | NRZ 电平 | tx_nrz_amp_ctrl：11=±3, 10=±2 … | §3.8（信号描述） | NRZ 幅度 |
 | P7 | FFE 结构 | 3-tap：C0 主、C-1 前、C1 后（后两者为负） | §4.3.2.4 | FFE 滤波 |
 | P8 | FFE 系数 | C0=tx_eq_main；\|C-1\|=tx_eq_pre；\|C1\|=tx_eq_post | §4.3.2.4 | 系数→寄存器映射 |
@@ -92,7 +92,7 @@ Raw PCS(软宏,RTL) ──> TX PMA(3-tap FFE + 电流模驱动) ──> 信道(�
 - 用 `comm.PRBSGenerator` / `comm.PRBSDecorrelation` 或自写 LFSR；PRQS10 可自写 quaternary LFSR。
 
 ### 3.2 符号映射（`mapSymbols.m`）
-- PAM4：bits → {−3, −1, +1, +3}（编码与 §7.3 Table 7-2 一致）。
+- PAM4：bits → {−3, −1, +1, +3}，固定 Gray 编码 `00→−3、01→−1、11→+1、10→+3`，阈值为 {−2, 0, +2}。
 - NRZ：bits → {−amp, +amp}（幅度按 P6）。
 - 归一化到单位电平便于 FFE/CTLE 计算，最后再乘回电压摆幅。
 

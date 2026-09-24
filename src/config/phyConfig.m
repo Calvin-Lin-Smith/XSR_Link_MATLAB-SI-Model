@@ -54,7 +54,7 @@ switch profile
             'coeffs',[-0.03 -0.05 0.88 -0.06 -0.04 -0.02],...
             'description','model-selected regression assumption; not paper-disclosed coefficients');
         cfg.txPma.lane.enableDacQuantization=true; cfg.txPma.lane.dacLevels=206;
-        cfg.txPma.lane.targetSwing=1; cfg.txPma.lane.gainError=0;
+        cfg.txPma.lane.targetSwing=1; cfg.txPma.lane.logicalOuterLevel=3; cfg.txPma.lane.gainError=0;
         cfg.txPma.lane.enableSwingCalibration=true;
         cfg.channel.mode='analytic_il'; cfg.channel.refFreq_GHz=28; cfg.channel.baud_GBd=56.25;
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;

@@ -3,6 +3,7 @@ function [bits,trace] = dspBbCdr(x,modulation,sps,options)
 % The phase detector sees only the received samples and prior symbol decisions.
 if nargin<4 || isempty(options), options=struct(); end
 x=x(:); modulation=char(modulation);
+contract=dspPam4Contract();
 validateattributes(sps,{'numeric'},{'scalar','integer','positive'});
 nCodes=getField(options,'nCodes',64); enabled=logical(getField(options,'enabled',true));
 initialPhaseUI=getField(options,'initialPhaseUI',0.5); loopGain=getField(options,'loopGainCodes',1);
@@ -116,7 +117,7 @@ end
 function v=decisionValue(x,modulation)
 switch upper(modulation)
     case 'NRZ', v=2*double(x>=0)-1;
-    case 'PAM4', v=-3; if x>=-2, v=-1; end; if x>=0, v=1; end; if x>=2, v=3; end
+    case 'PAM4', c=dspPam4Contract(); v=c.levels(1+sum(x>=c.thresholds));
     otherwise, error('dspBbCdr:Modulation','Unsupported modulation: %s',modulation);
 end
 end
@@ -125,6 +126,7 @@ function b=decisionBits(v,modulation)
 switch upper(modulation)
     case 'NRZ', b=double(v>0);
     case 'PAM4'
-        lut=[0 0;0 1;1 0;1 1]; idx=round((v+3)/2)+1; b=reshape(lut(idx,:).',[],1);
+        c=dspPam4Contract(); idx=find(c.levels==v,1); if isempty(idx), error('dspBbCdr:Decision','Invalid PAM4 decision.'); end
+        b=c.bitPairs(idx,:).';
 end
 end

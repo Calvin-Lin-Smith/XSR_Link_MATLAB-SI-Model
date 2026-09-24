@@ -1,6 +1,6 @@
 # D2D 112G PAM4 PHY SI Behavioral Model
 
-这是一个 MATLAB/Simulink 系统级、可观测、可回归的 D2D 112G PAM4 PHY 行为模型。当前 VLSI2024 XSR 路径覆盖 Raw PCS、x8 TX/RX、signed 3/6-tap FFE、206-level 行为 DAC、28 GHz analytic IL、AC/CTLE、sampler roles、decision-directed BB-CDR/PI、有限样本 BER 和训练/适配 trace。
+这是一个 MATLAB/Simulink 系统级、可观测、可回归的 D2D 112G PAM4 PHY 行为模型。当前 VLSI2024 XSR 路径覆盖 Raw PCS、x8 TX/RX、signed 3/6-tap FFE、206-level 行为 DAC、28 GHz analytic IL、AC/CTLE、sampler roles、decision-directed BB-CDR/PI、有限样本 BER 和训练/适配 trace；PAM4 固定使用 Gray contract `00→−3、01→−1、11→+1、10→+3`。
 
 本项目是 architecture/trend reproduction，不是 3nm transistor、IBIS-AMI、真实 S 参数/MIMO、功耗模型或 silicon/sign-off。论文 <1e-12/<1e-14 BER、约 0.9 pJ/b、194 fs integrated jitter 和 COM 等只作为 paper context；模型结果必须带 seed、measured_bits 和 ber_upper_95。
 

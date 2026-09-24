@@ -111,7 +111,7 @@ D2DPHY
 
 ### 2.2 bit 到 BER
 
-1. RawPcs.run 生成 PRBS31 referenceBits；dspMap 将 PAM4 bit pair 映射为 −3、−1、+1、+3。
+1. RawPcs.run 生成 PRBS31 referenceBits；dspMap 使用唯一 Gray PAM4 contract（`00→−3、01→−1、11→+1、10→+3`）映射 bit pair。
 2. TxLane 依次执行 signed FFE、Serializer 过采样和 Driver；Driver 可执行 targetSwing 钳位、gainError 与 DAC quantization。
 3. 每个 lane 经过 Channel。paper mode 使用 dspChannel 的 analytic_il，在 refFreq_GHz=28、baud_GBd=56.25 处校准 lossAtRef_dB。
 4. D2DPHY.run 在 channel output 上按 link.seed 加入由 snr_dB 指定的 RMS 高斯噪声。
