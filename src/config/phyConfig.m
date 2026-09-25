@@ -72,6 +72,7 @@ switch profile
             'offsetCalibrationPlaceholder','not implemented in Stage D');
         cfg.rxPma.lane.enablePam4Leveling=true; cfg.rxPma.lane.levelingOptions=struct('minOccupancy',0.02);
         cfg.model.useReferenceAlign=false; cfg.model.useManualPhase=false; cfg.model.manualPhaseUI=0.5; cfg.model.manualDelayUI=0;
+        cfg.model.checker=struct('paper',true,'maxLagUI',4,'syncBits',128);
         cfg.model.enablePaperAdaptation=false;
         cfg.model.trainingMode='decision_directed';
         cfg.model.cdrOptions=struct('nCodes',64,'initialPhaseUI',0.5,'loopGainCodes',1,...

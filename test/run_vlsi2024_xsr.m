@@ -195,12 +195,12 @@ if isfinite(sentinel)
     end
     nBitsSent=min(berStart*bitsPerSymbol,size(rawResult.rxBits,1));
     if nBitsSent>0, rawResult.rxBits(1:nBitsSent,1)=1-rawResult.rxBits(1:nBitsSent,1); end
-    [rawResult.errCnt,rawResult.nMeasured,rawResult.ber]=p.rawPcs.check(rawResult.rxBits,originalSkip);
+    [rawResult.errCnt,rawResult.nMeasured,rawResult.ber,rawResult.checker]=p.rawPcs.check(rawResult.rxBits,originalSkip,p.checkerOptions);
     rawResult.aggregateBer=sum(rawResult.errCnt)/max(sum(rawResult.nMeasured),1);
 end
 result=rawResult; result.berValid=false; result.status=status;
 if stage.cdrEnabled && all(laneLocked) && size(rawResult.rxBits,1)>berStart*bitsPerSymbol
-    [result.errCnt,result.nMeasured,result.ber]=p.rawPcs.check(rawResult.rxBits,berStart);
+    [result.errCnt,result.nMeasured,result.ber,result.checker]=p.rawPcs.check(rawResult.rxBits,berStart,p.checkerOptions);
     result.aggregateBer=sum(result.errCnt)/max(sum(result.nMeasured),1); result.berValid=true;
 else
     if stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; result.status=status; end

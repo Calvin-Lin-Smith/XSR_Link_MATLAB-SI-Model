@@ -6,6 +6,7 @@ classdef D2DPHY < Blk
         channel
         nLane = 8
         link = struct()
+        checkerOptions = struct()
     end
     methods
         function obj=D2DPHY(name,nLane)
@@ -19,6 +20,7 @@ classdef D2DPHY < Blk
         function configure(obj,cfg)
             configure@Blk(obj,cfg); obj.link=cfg.link; obj.rawPcs.configure(cfg.rawPcs,cfg.link);
             obj.txPma.configure(cfg.txPma,cfg.link);
+            obj.checkerOptions=struct(); if isfield(cfg,'model') && isfield(cfg.model,'checker'), obj.checkerOptions=cfg.model.checker; end
             if isfield(cfg,'model'), obj.rxPma.configure(cfg.rxPma,cfg.link,cfg.model); else, obj.rxPma.configure(cfg.rxPma,cfg.link); end
             cc=cfg.channel; cc.sps=cfg.link.sps;
             for j=1:obj.nLane, obj.channel(j).configure(cc); end
@@ -33,9 +35,9 @@ classdef D2DPHY < Blk
                 end
             end
             rng(old); rx=obj.rxPma.run(ch,obj.rawPcs.referenceBits);
-            [err,nMeasured,ber]=obj.rawPcs.check(rx,obj.link.skipUI);
+            [err,nMeasured,ber,checker]=obj.rawPcs.check(rx,obj.link.skipUI,obj.checkerOptions);
             res=struct('rxBits',rx,'errCnt',err,'nMeasured',nMeasured,'ber',ber,...
-                'aggregateBer',sum(err)/max(sum(nMeasured),1));
+                'aggregateBer',sum(err)/max(sum(nMeasured),1),'checker',checker);
             obj.record('txPad',tx); obj.record('channelOut',ch); obj.record('rxBits',rx); obj.record('out',res);
         end
         function dump(obj,indent)
