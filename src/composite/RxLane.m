@@ -73,6 +73,10 @@ classdef RxLane < Blk
                 if isfield(obj.cfg,'samplerRoles') && isfield(obj.cfg.samplerRoles,'samplerOffsetCodes')
                     cdrOpts.samplerOffsetCodes=obj.cfg.samplerRoles.samplerOffsetCodes;
                 end
+                if obj.enablePam4Leveling && strcmpi(char(obj.cfg.modulation),'PAM4')
+                    cdrOpts.levelingValid=obj.levelingMeta.levelsValid; cdrOpts.levelingMeta=obj.levelingMeta;
+                    if isfield(obj.levelingOptions,'minOccupancy'), cdrOpts.minOccupancy=obj.levelingOptions.minOccupancy; end
+                end
                 [cdrBits,obj.cdrTrace]=dspBbCdr(decisionWave,obj.cfg.modulation,obj.cfg.sps,cdrOpts);
                 obj.cdrTrace.levelingMeta=obj.levelingMeta;
                 obj.bestPhase=mod(round(obj.cdrTrace.dataPhaseUI(end)*obj.cfg.sps),obj.cfg.sps); obj.delayUI=0;

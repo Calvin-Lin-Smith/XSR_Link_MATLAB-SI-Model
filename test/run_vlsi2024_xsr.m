@@ -164,7 +164,7 @@ lockUI=zeros(nLane,1); laneLocked=false(nLane,1); fullLockTrace=cell(nLane,1);
 for k=1:nLane
     t=p.rxPma.lane(k).cdrTrace; fullLockTrace{k}=t;
     if stage.cdrEnabled && isstruct(t) && isfield(t,'lockIndex')
-        lockUI(k)=t.lockIndex; laneLocked(k)=t.lockIndex>0;
+        lockUI(k)=t.lockIndex; laneLocked(k)=getField(t,'currentlyLocked',getField(t,'locked',false));
     else, lockUI(k)=NaN; end
 end
 budget=debugStageTable(stage,requestedCfg,ctleTrace);
@@ -375,9 +375,10 @@ if ~enabled
     offRow=adaptRow('STARTUP_IMPEDANCE_CAL',disturbedObj,d,rDist,disturbedObj,disturbedObj,false,0.92);
     offRows=repmat(offRow,4,1); offRows.state=["STARTUP_IMPEDANCE_CAL";"CLOCK_CAL";"INITIAL_EQ_TRAIN";"MISSION_TRACK"];
     stateTrace=[reset; offRows];
-    ctleTrace=array2table([1 d.rxPma.lane.ctleBoost_dB d.rxPma.lane.ctleBoost_dB disturbedObj 0 0 sum(rDist.result.nMeasured) cfg.link.seed disturbedObj disturbedObj false],...
+    ctleTrace=array2table([1 d.rxPma.lane.ctleBoost_dB d.rxPma.lane.ctleBoost_dB disturbedObj 0 0 sum(rDist.result.nMeasured) cfg.link.seed disturbedObj disturbedObj false true true NaN NaN NaN],...
         'VariableNames',{'step','requested_dB','applied_dB','objective','initial_ctle_error_dB','residual_ctle_error_dB',...
-        'measured_bits','seed','disturbed_objective','recovered_objective','control_changed'});
+        'measured_bits','seed','disturbed_objective','recovered_objective','control_changed','objective_valid','four_level_valid',...
+        'four_occupancy_min','separation','within_cluster_noise'});
     cfg.model.enablePaperAdaptation=false; cfg.model.adaptation=d.model.adaptation; cfg.model.adaptationSampleBits=adaptBits;
     cfg.model.adaptation.selectedObjective=disturbedObj; trainedCfg=cfg; return;
 end
@@ -398,19 +399,19 @@ startRow=adaptRow('STARTUP_IMPEDANCE_CAL',startObj,startCfg,rStart,disturbedObj,
 rClock=rStart; clockObj=adaptObjective(rClock.model); clockRow=adaptRow('CLOCK_CAL',clockObj,startCfg,rClock,disturbedObj,clockObj,true,0.92);
 
 % INITIAL_EQ_TRAIN: bounded CTLE grid, then a small signed-FFE candidate set.
-grid=unique([d.rxPma.lane.ctleGrid_dB(:);4.13]); ctleRows=zeros(numel(grid),11);
+grid=unique([d.rxPma.lane.ctleGrid_dB(:);4.13]); ctleRows=zeros(numel(grid),16);
 offGridCfg=startCfg; offGridR=rStart; offGridObj=adaptObjective(rStart.model);
 bestObj=-inf; bestCfg=startCfg; bestR=rStart;
 if stageOptions.ctleTraining
     for k=1:numel(grid)
-        ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); obj=adaptObjective(rk.model);
+        ck=startCfg; ck.rxPma.lane.ctleBoost_dB=grid(k); rk=runModel(ck); [obj,objectiveMeta]=adaptObjective(rk.model);
         appliedCtle=rk.model.rxPma.lane(1).afe.ctle.appliedBoost_dB;
-        ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true];
+        ctleRows(k,:)=[k grid(k) appliedCtle obj 0.8 abs(appliedCtle-grid(k)) adaptBits cfg.link.seed disturbedObj obj true objectiveMeta.objectiveValid objectiveMeta.fourLevelValid objectiveMeta.fourOccupancyMin objectiveMeta.separation objectiveMeta.withinClusterNoise];
         if abs(grid(k)-4.13)<1e-12, offGridCfg=ck; offGridR=rk; offGridObj=obj; end
         if obj>bestObj, bestObj=obj; bestCfg=ck; bestR=rk; end
     end
 else
-    ctleRows=zeros(0,11);
+    ctleRows=zeros(0,16);
 end
 if strcmpi(char(d.txPma.lane.ffeMode),'six_tap')
     ffeCandidates={d.txPma.lane.ffeCoeffs,0.95*d.txPma.lane.ffeCoeffs,0.9*d.txPma.lane.ffeCoeffs};
@@ -437,7 +438,8 @@ rMission=runModel(bestCfg); missionObj=adaptObjective(rMission.model);
 missionRow=adaptRow('MISSION_TRACK',missionObj, bestCfg,rMission,driftObj,missionObj,true,0.92);
 stateTrace=[reset; startRow; clockRow; trainRow; missionRow];
 ctleTrace=array2table(ctleRows,'VariableNames',{'step','requested_dB','applied_dB','objective','initial_ctle_error_dB',...
-    'residual_ctle_error_dB','measured_bits','seed','disturbed_objective','recovered_objective','control_changed'});
+    'residual_ctle_error_dB','measured_bits','seed','disturbed_objective','recovered_objective','control_changed',...
+    'objective_valid','four_level_valid','four_occupancy_min','separation','within_cluster_noise'});
 ctleTrace.recovered=ctleTrace.objective>=disturbedObj; ctleTrace.control_changed=repmat(true,height(ctleTrace),1);
 cfg.model.enablePaperAdaptation=true; cfg.model.adaptation=d.model.adaptation; cfg.model.adaptationSampleBits=adaptBits;
 cfg.model.adaptation.selectedCtle_dB=bestCfg.rxPma.lane.ctleBoost_dB;
@@ -453,6 +455,7 @@ names={'objective','disturbed_objective','recovered_objective','control_changed'
     'rx_term_gain_residual','driver_swing_calibrated','dll_phase_correction_UI','dcc_duty_correction_UI',...
     'dll_phase_initial_UI','dll_phase_applied_UI','dll_phase_residual_UI','dcc_duty_initial_UI','dcc_duty_applied_UI',...
     'dcc_duty_residual_UI','sampler_offset_initial_codes','sampler_offset_applied_codes','sampler_offset_residual_codes',...
+    'four_level_valid','four_occupancy_min','logical_eye_margin','leveling_scale',...
     'spare_offset_initial_UI','spare_offset_residual_UI','cdr_lock_index','measured_bits','seed','dac_step','dac_clipped_samples'};
 for k=1:numel(names), row.(names{k})=NaN; end
 row.ctle_requested_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_target_dB=cfg.rxPma.lane.ctleBoost_dB; row.ctle_applied_dB=cfg.rxPma.lane.ctleBoost_dB;
@@ -460,6 +463,7 @@ row.ffe_current=sum(abs(cfg.txPma.lane.ffeCoeffs)); row.driver_gain_error=cfg.tx
 row.driver_swing_calibrated=double(cfg.txPma.lane.enableSwingCalibration);
 row.rx_term_gain_initial=cfg.rxPma.lane.termGain; row.rx_term_gain_applied=cfg.rxPma.lane.termGain; row.rx_term_gain_residual=abs(1-cfg.rxPma.lane.termGain);
 row.dac_step=2/(cfg.txPma.lane.dacLevels-1); row.dac_clipped_samples=NaN;
+row.four_level_valid=false; row.four_occupancy_min=NaN; row.logical_eye_margin=NaN; row.leveling_scale=NaN;
 end
 
 function row=adaptRow(state,obj,cfg,r,disturbedObj,recoveredObj,controlChanged,rxInitial)
@@ -476,14 +480,35 @@ row.dcc_duty_initial_UI=init.dccDutyUI; row.dcc_duty_applied_UI=cfg.model.cdrOpt
 row.dll_phase_correction_UI=row.dll_phase_applied_UI; row.dcc_duty_correction_UI=row.dcc_duty_applied_UI;
 row.sampler_offset_initial_codes=init.samplerOffsetCodes; row.sampler_offset_applied_codes=cfg.rxPma.lane.samplerRoles.samplerOffsetCodes;
 row.sampler_offset_residual_codes=abs(row.sampler_offset_applied_codes); row.spare_offset_initial_UI=0.04; row.spare_offset_residual_UI=0.005;
-row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=getField(dm,'step',2/(cfg.txPma.lane.dacLevels-1)); row.dac_clipped_samples=getField(dm,'clippedSamples',NaN);
+ row.cdr_lock_index=cdr.lockIndex; row.measured_bits=sum(r.result.nMeasured); row.seed=cfg.link.seed; row.dac_step=getField(dm,'step',2/(cfg.txPma.lane.dacLevels-1)); row.dac_clipped_samples=getField(dm,'clippedSamples',NaN);
+ [~,objectiveMeta]=adaptObjective(r.model); row.four_level_valid=objectiveMeta.fourLevelValid; row.four_occupancy_min=objectiveMeta.fourOccupancyMin;
+ row.logical_eye_margin=objectiveMeta.eyeMargin; row.leveling_scale=getField(lane.levelingMeta,'levelingScale',NaN);
 end
 
-function obj=adaptObjective(p)
-lane=p.rxPma.lane(1); s=lane.dataSamples; d=lane.dataDecisions;
-levels=unique(d(isfinite(d))); means=[];
-for k=1:numel(levels), v=s(d==levels(k)); if ~isempty(v), means(end+1)=mean(v); end, end %#ok<AGROW>
-if numel(means)<2, obj=0; else, means=sort(means); obj=max(0,min(diff(means))); end
+function [obj,meta]=adaptObjective(p)
+lane=p.rxPma.lane(1); s=lane.dataSamples(:); d=lane.dataDecisions(:);
+meta=struct('objectiveValid',true,'fourLevelValid',true,'fourOccupancyMin',NaN,'separation',NaN,'withinClusterNoise',NaN,'eyeMargin',NaN);
+if ~strcmpi(char(lane.cfg.modulation),'PAM4')
+    levels=unique(d(isfinite(d))); means=[];
+    for k=1:numel(levels), v=s(d==levels(k)); if ~isempty(v), means(end+1)=mean(v); end, end %#ok<AGROW>
+    if numel(means)<2, obj=0; else, means=sort(means); obj=max(0,min(diff(means))); end
+    return;
+end
+c=dspPam4Contract(); finite=isfinite(s)&isfinite(d); s=s(finite); d=d(finite); minOcc=0.02;
+if isprop(lane,'levelingMeta') && isfield(lane.levelingMeta,'minOccupancy'), minOcc=lane.levelingMeta.minOccupancy; end
+occupancy=zeros(1,4); centroids=nan(1,4); sigma=nan(1,4);
+for k=1:4
+    hit=d==c.levels(k); occupancy(k)=sum(hit)/max(numel(d),1);
+    if any(hit), v=s(hit); centroids(k)=mean(v); sigma(k)=std(v,0); end
+end
+separation=min(diff(centroids)); noise=max(sigma); eyeMargin=separation-2*noise;
+fourValid=all(occupancy>=minOcc)&&all(isfinite(centroids))&&all(diff(centroids)>eps(max(1,max(abs(centroids)))))&&...
+    isprop(lane,'levelingMeta')&&lane.levelingMeta.levelsValid;
+meta.objectiveValid=fourValid; meta.fourLevelValid=fourValid; meta.fourOccupancyMin=min(occupancy);
+meta.separation=separation; meta.withinClusterNoise=noise; meta.eyeMargin=eyeMargin;
+if ~fourValid || ~isfinite(separation) || ~isfinite(noise), obj=0;
+else, obj=max(0,separation/max(noise,eps)-10*sum(max(0,minOcc-occupancy)));
+end
 end
 
 function metrics=metricTable(r,cfg)

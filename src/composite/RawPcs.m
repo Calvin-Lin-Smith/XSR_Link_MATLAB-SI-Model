@@ -97,7 +97,8 @@ for lane=1:lanes
     [bestErr,bestIndex]=min(evenErr); bestLagBits=evenBits(bestIndex);
     oddCandidates=(-maxLagUI*bps):(maxLagUI*bps); oddCandidates=oddCandidates(mod(oddCandidates,bps)~=0); oddErr=inf(size(oddCandidates));
     for k=1:numel(oddCandidates), [oddErr(k),~]=windowErrors(rxBits(:,lane),ref(:,lane),syncStart,syncEnd,oddCandidates(k)); end
-    bestOdd=min(oddErr); framingValid(lane)=isempty(oddErr) || ~(bestOdd<bestErr);
+    bestOdd=min(oddErr); oddAdvantage=max(2,ceil(0.1*max(syncEnd-syncStart+1,1)));
+    framingValid(lane)=isempty(oddErr) || ~(bestOdd<bestErr-oddAdvantage);
     if isfinite(bestErr) && framingValid(lane)
         [measureErr,measureCount]=windowErrors(rxBits(:,lane),ref(:,lane),measureStart,min(nRef,nRx),bestLagBits);
         if measureCount>0
