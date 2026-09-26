@@ -19,7 +19,7 @@ switch mode
         writeCdrArtifacts(r.model,resultRoot,cfg);
         [probes,probeManifest]=collectProbes(r.model,cfg); %#ok<ASGLU>
         save(fullfile(resultRoot,'baseline_probes.mat'),'probes','probeManifest','-v7');
-        out=struct('mode',mode,'cfg',cfg,'result',r.result,'metrics',metrics,...
+        out=struct('mode',mode,'cfg',cfg,'result',r.result,'metrics',metrics,'model',r.model,...
             'resultRoot',resultRoot,'probes',probes,'probeManifest',probeManifest);
     case 'loss_sweep'
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
@@ -50,8 +50,10 @@ switch mode
         writeJson(cfg,fullfile(resultRoot,'config.json'));
         out=struct('mode',mode,'cfg',cfg,'metrics',metrics,'channelIL',il,'resultRoot',resultRoot);
     case {'static_checkpoint','static','milestone'}
-        base=run_vlsi2024_xsr('baseline',nBits); cfg=base.cfg; resultRoot=base.resultRoot;
-        loss=run_vlsi2024_xsr('loss_sweep',nBits); channelIL=loss.channelIL;
+        if isempty(cfgOverride), base=run_vlsi2024_xsr('baseline',nBits); else, base=run_vlsi2024_xsr('baseline',nBits,'Config',cfgOverride); end
+        cfg=base.cfg; resultRoot=base.resultRoot;
+        if isempty(cfgOverride), loss=run_vlsi2024_xsr('loss_sweep',nBits); else, loss=run_vlsi2024_xsr('loss_sweep',nBits,'Config',cfgOverride); end
+        channelIL=loss.channelIL;
         channelIL.measured_bits=loss.metrics.measured_bits;
         channelIL.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(channelIL),1);
         writetable(channelIL,fullfile(resultRoot,'channel_il.csv'));
@@ -432,7 +434,7 @@ if bestObj==-inf, bestObj=adaptObjective(bestR.model); end
 trainRow=adaptRow('INITIAL_EQ_TRAIN',offGridObj,offGridCfg,offGridR,disturbedObj,bestObj,true,0.92);
 
 % MISSION_TRACK: apply a real CTLE drift, measure degradation, then restore the trained controls.
-driftCfg=bestCfg; driftCfg.rxPma.lane.ctleBoost_dB=min(6,bestCfg.rxPma.lane.ctleBoost_dB+0.8);
+driftCfg=bestCfg; if bestCfg.rxPma.lane.ctleBoost_dB>=5.2, driftCfg.rxPma.lane.ctleBoost_dB=max(0,bestCfg.rxPma.lane.ctleBoost_dB-0.8); else, driftCfg.rxPma.lane.ctleBoost_dB=min(6,bestCfg.rxPma.lane.ctleBoost_dB+0.8); end
 rDrift=runModel(driftCfg); driftObj=adaptObjective(rDrift.model);
 rMission=runModel(bestCfg); missionObj=adaptObjective(rMission.model);
 missionRow=adaptRow('MISSION_TRACK',missionObj, bestCfg,rMission,driftObj,missionObj,true,0.92);
@@ -518,6 +520,15 @@ metrics=table(lanes,r.result.errCnt(:),r.result.nMeasured(:),r.result.ber(:),rep
     'VariableNames',{'lane','errors','measured_bits','empirical_BER','seed','ber_upper_95'});
 metrics.mode=repmat(string(cfg.link.modulation),n,1); metrics.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,n,1);
 metrics.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,n,1); metrics.lane_context="lane"+string(lanes); metrics.sample_bits=repmat(cfg.link.nBits,n,1);
+metrics.pam4_mapping=repmat(string(cfg.link.pam4Mapping),n,1); metrics.logical_outer_level=repmat(cfg.txPma.lane.logicalOuterLevel,n,1);
+metrics.physical_target_swing=repmat(cfg.txPma.lane.targetSwing,n,1); metrics.four_levels_valid=false(n,1); metrics.tail_lock=false(n,1);
+metrics.lock_loss_count=zeros(n,1); metrics.checker_lag_ui=nan(n,1); metrics.leveling_scale=nan(n,1);
+for k=1:n
+    lane=r.model.rxPma.lane(k); metrics.four_levels_valid(k)=getField(lane.levelingMeta,'levelsValid',false)&&getField(lane.cdrTrace,'levelsValid',false);
+    metrics.tail_lock(k)=getField(lane.cdrTrace,'currentlyLocked',false); metrics.lock_loss_count(k)=getField(lane.cdrTrace,'lockLossCount',NaN);
+    if isfield(r.result,'checker'), metrics.checker_lag_ui(k)=r.result.checker.checkerLagUI(k); end
+    metrics.leveling_scale(k)=getField(lane.levelingMeta,'levelingScale',NaN);
+end
 end
 
 function row=summaryRow(label,result,cfg)
@@ -566,6 +577,11 @@ probes.ctleOut=takeProbe(lane.afe.ctleOut,limit);
 probes.slicerIn=takeProbe(slicer.in,limit);
 probes.rxBits=lane.deserializer.rxBits;
 probes.dataSamples=takeProbe(slicer.dataSamples,limit); probes.dataDecisions=slicer.dataDecisions;
+probes.rawSamples=takeProbe(lane.rawSamples,limit); probes.logicalSamples=takeProbe(lane.logicalSamples,limit);
+lm=lane.levelingMeta; probes.rawCentroids=getField(lm,'rawCentroids',nan(1,4)); probes.logicalCentroids=getField(lm,'logicalCentroids',nan(1,4));
+probes.occupancy=getField(lm,'occupancy',nan(1,4)); probes.occupancyCount=getField(lm,'occupancyCount',nan(1,4));
+probes.levelingOffset=getField(lm,'levelingOffset',NaN); probes.levelingScale=getField(lm,'levelingScale',NaN);
+probes.levelsValid=getField(lm,'levelsValid',false); probes.pam4Mapping=cfg.link.pam4Mapping; probes.logicalOuterLevel=cfg.txPma.lane.logicalOuterLevel;
 probes.edgeSamples=takeProbe(slicer.edgeSamples,limit); probes.edgeDetectorOutput=slicer.edgeDetectorOutput;
 probes.spareSamples=takeProbe(slicer.spareSamples,limit); probes.spareMonitorOutput=slicer.spareMonitorOutput;
 probes.levelShiftedSamples=takeProbe(slicer.levelShiftedSamples,limit);
@@ -576,7 +592,9 @@ manifest=struct('nLane',p.nLane,'nBits',cfg.link.nBits,'sampleLimit',limit,...
     'txPad',size(p.txPma.lane(1).driver.txPad),'channelOut',size(p.channel(1).out),...
     'ctleOut',size(lane.afe.ctleOut),'slicerIn',size(slicer.in),'dataSamples',size(slicer.dataSamples),...
     'edgeSamples',size(slicer.edgeSamples),'spareSamples',size(slicer.spareSamples),...
-    'levelShiftedSamples',size(slicer.levelShiftedSamples),'rxBits',size(lane.deserializer.rxBits));
+    'levelShiftedSamples',size(slicer.levelShiftedSamples),'rxBits',size(lane.deserializer.rxBits),...
+    'rawSamples',size(lane.rawSamples),'logicalSamples',size(lane.logicalSamples),...
+    'rawCentroids',size(probes.rawCentroids),'logicalCentroids',size(probes.logicalCentroids));
 end
 
 function y=takeProbe(x,limit)
@@ -600,17 +618,23 @@ fprintf(fid,['# VLSI2024 XSR behavioral assumptions\n\n' ...
     '- BB-CDR lock means the residual phase stays within the configured tolerance for the configured consecutive lock window; loop bandwidth/update cadence are behavioral proxies.\n' ...
     '- The approximately 194 fs value is retained as PLL+TX integrated jitter with measurement/filter context, not TX-only jitter.\n' ...
     '- Calibration optimizes observable eye/decision margin, not finite BER.\n' ...
+    '- PAM4 uses the single Gray contract `00->-3, 01->-1, 11->+1, 10->+3`; physical targetSwing is metadata and logical DAC units remain +/-3.\n' ...
+    '- AC corner/mode is a model-selected assumption from the bounded cornerRelNyq matrix; it is not a paper-disclosed value.\n' ...
     '- No real S-parameters/reflections, MIMO crosstalk, transistor/T-coil circuits, silicon calibration logic, or power breakdown are modeled.\n']); fclose(fid);
 end
 
 function writeCdrArtifacts(p,resultRoot,cfg)
 lane=p.rxPma.lane(1); t=lane.cdrTrace; n=numel(t.piCodeTrace); k=(1:n)';
+levelOccMin=nan(n,1); for ii=1:n, v=t.levelOccupancyTrace(ii,:); v=v(isfinite(v)); if ~isempty(v), levelOccMin(ii)=min(v); end, end
 lock=table(k,logical(t.cdr_lock_trace(:)),logical(t.transitionTrace(:)),t.piCodeTrace(:),t.piRawCodeTrace(:),...
     t.piWrappedCodeTrace(:),t.piAppliedCodeTrace(:),t.piMismatchTrace(:),t.piWrapCountTrace(:),t.errorTrace(:),...
     t.dataPhaseUI(:),t.edgePhaseUI(:),t.residualPhaseUI(:),repmat(1,n,1),repmat(cfg.link.seed,n,1),...
-    repmat(string(cfg.model.trainingMode),n,1),...
+    repmat(string(cfg.model.trainingMode),n,1),logical(t.currentlyLockedTrace(:)),repmat(logical(t.everLocked),n,1),...
+    repmat(t.lockLossCount,n,1),logical(t.cycleSlipTrace(:)),t.piUnwrappedCodeTrace(:),t.piSampleTimeTrace(:),...
+    logical(t.levelsValidTrace(:)),levelOccMin,t.logicalEyeMarginTrace(:),...
     'VariableNames',{'sample','locked','transition','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
-    'pi_mismatch_LSB','pi_wrap_count','phase_error','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed','training_mode'});
+    'pi_mismatch_LSB','pi_wrap_count','phase_error','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed','training_mode',...
+    'currently_locked','ever_locked','lock_loss_count','cycle_slip','pi_unwrapped_code','pi_sample_time','four_level_valid','four_occupancy_min','logical_eye_margin'});
 writetable(lock,fullfile(resultRoot,'cdr_lock_trace.csv'));
 stride=max(1,ceil(n/4096)); pi=lock(1:stride:end,{'sample','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
     'pi_mismatch_LSB','pi_wrap_count','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed'});
@@ -621,6 +645,15 @@ assert(sum(counts)==n,'Residual histogram does not cover all CDR samples.');
 histogramTable=table(centers(:),counts(:),repmat(n,numel(centers),1),repmat(cfg.link.seed,numel(centers),1),...
     'VariableNames',{'residual_phase_UI_bin','count','sample_count','seed'});
 writetable(histogramTable,fullfile(resultRoot,'residual_phase_histogram.csv'));
+cm=p.rawPcs.checkerMeta; laneIds=(1:p.nLane)'; checker=table(laneIds,cm.checkerLagUI(:),cm.syncBits(:),cm.measurementBits(:),...
+    logical(cm.alignmentValid(:)),logical(cm.framingValid(:)),p.rawPcs.errCnt(:),cm.measurementBits(:),...
+    p.rawPcs.errCnt(:)./max(cm.measurementBits(:),1),repmat(cfg.link.seed,p.nLane,1),...
+    'VariableNames',{'lane','checker_lag_ui','sync_bits','measurement_bits','alignment_valid','framing_valid','errors','measured_bits','empirical_BER','seed'});
+checker.ber_upper_95=arrayfun(@binomialUpper95,checker.errors,checker.measured_bits);
+checker.mode=repmat("paper_integer_ui",height(checker),1); checker.measurement_start_ui=cm.measurementStartUI(:);
+checker.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(checker),1); checker.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(checker),1);
+checker.lane_context="lane"+string(laneIds); checker.sample_bits=repmat(cfg.link.nBits,height(checker),1);
+writetable(checker,fullfile(resultRoot,'checker_alignment.csv'));
 ensureDir(fullfile(resultRoot,'plots')); f=figure('Visible','off'); plot(k(1:min(n,2048)),t.residualPhaseUI(1:min(n,2048))); grid on;
 xlabel('UI sample index'); ylabel('Residual phase (UI)'); title('Behavioral BB-CDR residual phase');
 exportgraphics(f,fullfile(resultRoot,'plots','cdr_residual_phase.png')); close(f);

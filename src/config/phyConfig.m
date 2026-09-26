@@ -7,6 +7,8 @@ profile = lower(char(profile));
 
 % Link and simulation controls.
 cfg.link.modulation='PAM4'; cfg.link.baud_Gbps=56; cfg.link.sps=16;
+cfgPam4=dspPam4Contract(); cfg.link.pam4Mapping='gray_00_01_11_10';
+cfg.link.pam4Levels=cfgPam4.levels; cfg.link.pam4Thresholds=cfgPam4.thresholds;
 cfg.link.nBits=12000; cfg.link.skipUI=32; cfg.link.snr_dB=28;
 cfg.link.rjUI_rms=0.005; cfg.link.djUI_pp=0.02; cfg.link.djFreq=1e-3;
 cfg.link.cdrBw=0.1; cfg.link.seed=42;
@@ -59,8 +61,10 @@ switch profile
         cfg.channel.mode='analytic_il'; cfg.channel.refFreq_GHz=28; cfg.channel.baud_GBd=56.25;
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
         cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
-        cfg.rxPma.lane.terminationMode='AC'; cfg.rxPma.lane.enableAcPre=true; cfg.rxPma.lane.enableAcPost=true;
+        cfg.rxPma.lane.terminationMode='AC'; cfg.rxPma.lane.enableAcPre=true; cfg.rxPma.lane.enableAcPost=false;
         cfg.rxPma.lane.acPreCorner_UI=0.01; cfg.rxPma.lane.acPostCorner_UI=0.01;
+        cfg.rxPma.lane.acSelectedCorner_UI=0.01; cfg.rxPma.lane.acSelectedMode='model-selected assumption';
+        cfg.rxPma.lane.acSelectionBasis='bounded cornerRelNyq sweep; four levels, tail lock, positive eye margin';
         cfg.rxPma.lane.acInitialState='steady_state'; cfg.rxPma.lane.enableAgc=false;
         cfg.rxPma.lane.ctlePolicy='paper_grid'; cfg.rxPma.lane.ctleBoost_dB=4;
         cfg.rxPma.lane.ctleGrid_dB=0:0.2:6; cfg.rxPma.lane.ctleAppliedBoost_dB=4;
@@ -72,7 +76,7 @@ switch profile
             'offsetCalibrationPlaceholder','not implemented in Stage D');
         cfg.rxPma.lane.enablePam4Leveling=true; cfg.rxPma.lane.levelingOptions=struct('minOccupancy',0.02);
         cfg.model.useReferenceAlign=false; cfg.model.useManualPhase=false; cfg.model.manualPhaseUI=0.5; cfg.model.manualDelayUI=0;
-        cfg.model.checker=struct('paper',true,'maxLagUI',4,'syncBits',128);
+        cfg.model.checker=struct('paper',true,'maxLagUI',4,'syncBits',32);
         cfg.model.enablePaperAdaptation=false;
         cfg.model.trainingMode='decision_directed';
         cfg.model.cdrOptions=struct('nCodes',64,'initialPhaseUI',0.5,'loopGainCodes',1,...
@@ -114,6 +118,7 @@ switch profile
             cfg.txPma.lane.enableDacQuantization=false; cfg.txPma.lane.gainError=0;
             cfg.txPma.lane.enableSwingCalibration=true;
             cfg.rxPma.lane.enableAcPre=false; cfg.rxPma.lane.enableAcPost=false;
+            cfg.rxPma.lane.acSelectedCorner_UI=0; cfg.rxPma.lane.acSelectedMode='ideal verification bypass';
             cfg.rxPma.lane.ctleBoost_dB=0; cfg.rxPma.lane.ctleGrid_dB=zeros(size(cfg.rxPma.lane.ctleGrid_dB)); cfg.rxPma.lane.ctleAppliedBoost_dB=0;
             cfg.model.cdrOptions.mismatchBoundLSB=0; cfg.model.cdrOptions.mismatchSeed=0;
             cfg.model.cdrOptions.staticPhaseSkewUI=0; cfg.model.cdrOptions.staticDutyCorrectionUI=0;

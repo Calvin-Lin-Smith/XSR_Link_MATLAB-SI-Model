@@ -86,7 +86,8 @@ for lane=1:lanes
     nRef=min(size(ref,1),obj.nBits); nRx=size(rxBits,1);
     baseStart=skipUI*bps+1;
     if isempty(explicitStart)
-        if baseStart>1, syncEnd=min([nRef nRx baseStart-1]); syncStart=max(1,syncEnd-syncLength+1); measureStart=max(baseStart,syncEnd+1);
+        if baseStart>1 && baseStart-1>=syncLength, syncEnd=min([nRef nRx baseStart-1]); syncStart=max(1,syncEnd-syncLength+1); measureStart=max(baseStart,syncEnd+1);
+        elseif baseStart>1, syncStart=baseStart; syncEnd=min([nRef nRx baseStart+syncLength-1]); measureStart=syncEnd+1;
         else, syncStart=1; syncEnd=min([nRef nRx syncLength]); measureStart=syncEnd+1; end
     else
         measureStart=explicitStart+1; syncEnd=min([nRef nRx max(0,measureStart-1)]); syncStart=max(1,syncEnd-syncLength+1);
@@ -94,7 +95,7 @@ for lane=1:lanes
     if syncEnd<syncStart, syncStart=1; syncEnd=0; end
     evenUI=-maxLagUI:maxLagUI; evenBits=evenUI*bps; evenErr=inf(size(evenBits)); evenCount=zeros(size(evenBits));
     for k=1:numel(evenBits), [evenErr(k),evenCount(k)]=windowErrors(rxBits(:,lane),ref(:,lane),syncStart,syncEnd,evenBits(k)); end
-    [bestErr,bestIndex]=min(evenErr); bestLagBits=evenBits(bestIndex);
+    bestErr=min(evenErr); bestIndex=find(evenErr==bestErr,1,'last'); bestLagBits=evenBits(bestIndex);
     oddCandidates=(-maxLagUI*bps):(maxLagUI*bps); oddCandidates=oddCandidates(mod(oddCandidates,bps)~=0); oddErr=inf(size(oddCandidates));
     for k=1:numel(oddCandidates), [oddErr(k),~]=windowErrors(rxBits(:,lane),ref(:,lane),syncStart,syncEnd,oddCandidates(k)); end
     bestOdd=min(oddErr); oddAdvantage=max(2,ceil(0.1*max(syncEnd-syncStart+1,1)));

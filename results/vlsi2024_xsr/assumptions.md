@@ -9,4 +9,6 @@
 - BB-CDR lock means the residual phase stays within the configured tolerance for the configured consecutive lock window; loop bandwidth/update cadence are behavioral proxies.
 - The approximately 194 fs value is retained as PLL+TX integrated jitter with measurement/filter context, not TX-only jitter.
 - Calibration optimizes observable eye/decision margin, not finite BER.
+- PAM4 uses the single Gray contract `00->-3, 01->-1, 11->+1, 10->+3`; physical targetSwing is metadata and logical DAC units remain +/-3.
+- AC corner/mode is a model-selected assumption from the bounded cornerRelNyq matrix; it is not a paper-disclosed value.
 - No real S-parameters/reflections, MIMO crosstalk, transistor/T-coil circuits, silicon calibration logic, or power breakdown are modeled.

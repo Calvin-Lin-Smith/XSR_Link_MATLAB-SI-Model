@@ -1,0 +1,16 @@
+mode,cornerRelNyq,ac_pre_enabled,ac_post_enabled,four_levels_valid,tail_lock,eye_margin,aggregate_BER,ber_upper_95,checker_lag_ui,leveling_scale,model_selected_assumption
+pre-only,0.0001,1,0,1,1,0.979659505670338,0.00931486701801691,0.0106496677391935,1,1.96442849572536,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.0003,1,0,1,1,1.01052625178306,0.0106017894349798,0.0120180456968668,1,1.96817051803464,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.001,1,0,1,1,0.962863217370066,0.0264125505576664,0.0285716651490781,1,1.98128424110473,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.003,1,0,1,1,0.867424576590324,0.450490196078431,0.456933146502538,0,2.00795861171067,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.01,1,0,1,1,0.658734385173647,0.0862850839563672,0.0899860128317158,1,2.05039160201874,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.0001,0,1,1,1,0.979132872425098,0.00159333251623974,0.00221016468374905,1,1.96336497989479,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.0003,0,1,1,1,1.01033233367836,0.011949993871798,0.013446286460252,1,1.96779282901436,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.001,0,1,1,1,0.962425268143747,0.0264125505576664,0.0285716651490781,1,1.98038307270941,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.003,0,1,1,1,0.867421221899955,0.450490196078431,0.456933146502538,0,2.00795084610245,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.01,0,1,1,1,0.658759445273232,0.0867140580953548,0.0904230526625273,1,2.05046960465362,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.0001,1,1,1,1,1.13791030265425,0.00943743105772766,0.0107802289760193,1,1.96588893128023,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.0003,1,1,1,1,0.988354015260455,0.0284348572128937,0.0306689965289395,1,1.97210498351279,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.001,1,1,1,1,0.950162175741022,0.0406299791641132,0.0432641858685309,1,1.99631488604462,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.003,1,1,1,1,0.613560160076328,0.451470588235294,0.457914652909014,0,2.01431839362093,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.01,1,1,1,1,0.503250118070526,0.481125137884545,0.487591497669688,-1,2.06868861843868,AC corner/mode selected by bounded sweep; paper value undisclosed

@@ -14,7 +14,7 @@ paper fact,PI mismatch,"< +/-0.5 LSB",deterministic bound 0.49 LSB,recorded,sour
 paper fact,pattern,"PRBS31",cfg.rawPcs.pattern,recorded,source fact retained; not inferred from model
 paper fact,integrated jitter,"194 fs PLL+TX integrated, filtered/measurement context",metadata only,recorded,source fact retained; not inferred from model
 paper fact,COM,"2.5 dB COM at 1e-6",not estimated,recorded,source fact retained; not inferred from model
-model output,baseline empirical BER,"paper BER claims",aggregate BER 0.491299 over 2096640 bits,measured behavioral output,finite empirical result with 95% upper bounds
+model output,baseline empirical BER,"paper BER claims",aggregate BER 0.0444915 over 2096624 bits,measured behavioral output,finite empirical result with 95% upper bounds
 model assumption,channel,"not selected",calibrated analytic IL at 28 GHz,selected assumption,architecture/trend reproduction
 model limitation,S-parameters/reflections,"not modeled",absent,explicit limitation,outside milestone scope
 model limitation,MIMO crosstalk,"not modeled",absent,explicit limitation,outside milestone scope

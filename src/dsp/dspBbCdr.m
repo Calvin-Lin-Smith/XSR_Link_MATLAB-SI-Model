@@ -12,7 +12,7 @@ updateCadence=getField(options,'updateCadence',1); bandwidthProxy=getField(optio
 minTransitions=getField(options,'minTransitions',max(4,ceil(lockWindow/8))); maxCodeSpan=getField(options,'maxCodeSpanCodes',8);
 staticPhaseSkewUI=getField(options,'staticPhaseSkewUI',0); staticDutyCorrectionUI=getField(options,'staticDutyCorrectionUI',0);
 samplerOffsetCodes=getField(options,'samplerOffsetCodes',0); minOccupancy=getField(options,'minOccupancy',0.02);
-minEyeMargin=getField(options,'minEyeMargin',0.05); levelingValid=logical(getField(options,'levelingValid',true));
+minEyeMargin=getField(options,'minEyeMargin',0); levelingValid=logical(getField(options,'levelingValid',true));
 piOptions=struct('nCodes',nCodes,'mismatchBoundLSB',getField(options,'mismatchBoundLSB',0),...
     'mismatchSeed',getField(options,'mismatchSeed',0));
 validateattributes(initialPhaseUI,{'numeric'},{'scalar','real','finite'});

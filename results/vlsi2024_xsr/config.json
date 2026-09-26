@@ -3,6 +3,18 @@
     "modulation": "PAM4",
     "baud_Gbps": 56.25,
     "sps": 16,
+    "pam4Mapping": "gray_00_01_11_10",
+    "pam4Levels": [
+      -3,
+      -1,
+      1,
+      3
+    ],
+    "pam4Thresholds": [
+      -2,
+      0,
+      2
+    ],
     "nBits": 262144,
     "skipUI": 32,
     "snr_dB": 28,
@@ -74,6 +86,7 @@
       "enableDacQuantization": true,
       "dacLevels": 206,
       "targetSwing": 1,
+      "logicalOuterLevel": 3,
       "gainError": 0,
       "enableSwingCalibration": true
     }
@@ -86,9 +99,12 @@
       "clockMode": "forwarded",
       "terminationMode": "AC",
       "enableAcPre": true,
-      "enableAcPost": true,
+      "enableAcPost": false,
       "acPreCorner_UI": 0.01,
       "acPostCorner_UI": 0.01,
+      "acSelectedCorner_UI": 0.01,
+      "acSelectedMode": "model-selected assumption",
+      "acSelectionBasis": "bounded cornerRelNyq sweep; four levels, tail lock, positive eye margin",
       "acInitialState": "steady_state",
       "enableAgc": false,
       "ctlePolicy": "paper_grid",
@@ -156,6 +172,10 @@
           2
         ],
         "offsetCalibrationPlaceholder": "not implemented in Stage D"
+      },
+      "enablePam4Leveling": true,
+      "levelingOptions": {
+        "minOccupancy": 0.02
       }
     }
   },
@@ -241,6 +261,11 @@
     "useManualPhase": false,
     "manualPhaseUI": 0.5,
     "manualDelayUI": 0,
+    "checker": {
+      "paper": true,
+      "maxLagUI": 4,
+      "syncBits": 32
+    },
     "enablePaperAdaptation": true,
     "trainingMode": "decision_directed",
     "cdrOptions": {
@@ -302,13 +327,13 @@
         "samplerOffsetCodes": 0.05
       },
       "finiteBerNotOptimizationTarget": true,
-      "selectedCtle_dB": 0,
+      "selectedCtle_dB": 6,
       "selectedFfe": [
-        -0.01,
-        0.98,
-        -0.01
+        -0.08,
+        0.84,
+        -0.08
       ],
-      "selectedObjective": 0.82379961070904772
+      "selectedObjective": 3.5272640864178575
     },
     "adaptationSampleBits": 16384,
     "staticSweepSampleBits": 16384
