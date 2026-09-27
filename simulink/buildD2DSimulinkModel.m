@@ -157,7 +157,7 @@ if strcmp(direction,'tx')
         ffeCode=['dspFfe(u,d2dCfg.txPma.lane.txEqMain,d2dCfg.txPma.lane.txEqPre,' ...
             'd2dCfg.txPma.lane.txEqPost,d2dCfg.txPma.lane.ffeNormalize)'];
     end
-    dacCode='u';
+    dacCode='dspPaperDriver(u,d2dCfg.txPma.lane)';
     code={ffeCode,...
         'repelem(u,d2dCfg.link.sps)',...
         dacCode};
@@ -175,6 +175,11 @@ else
         acPostCode,'u',...
         'dspSample(u,floor(d2dCfg.link.sps/2),0,d2dCfg.link.sps,0)',...
         'dspSlice(u,d2dCfg.link.modulation)','u'};
+    paperExecutable=isfield(cfg,'model')&&isfield(cfg.model,'useReferenceAlign')&&~cfg.model.useReferenceAlign;
+    if paperExecutable
+        blocks=[blocks(1:4) {'PAM4 Blind Leveling'} blocks(5:end)];
+        code=[code(1:4) {'dspPam4Leveling(u)'} code(5:end)];
+    end
 end
 last='In1/1';
 for k=1:numel(blocks)
@@ -183,7 +188,15 @@ for k=1:numel(blocks)
         'MATLABFcn',code{k});
     add_line(path,last,[safe '/1'],'autorouting','on'); last=[safe '/1'];
 end
-if strcmp(direction,'rx')
+if strcmp(direction,'rx') && paperExecutable
+    levelBlock=matlab.lang.makeValidName('PAM4 Blind Leveling');
+    boundary=[path '/BB-CDR PI Adaptation'];
+    add_block('simulink/User-Defined Functions/Interpreted MATLAB Function',boundary,'Position',[80 230 300 285],...
+        'MATLABFcn','dspBbCdr(u,d2dCfg.link.modulation,d2dCfg.link.sps,d2dCfg.model.cdrOptions)');
+    add_line(path,[levelBlock '/1'],'BB-CDR PI Adaptation/1','autorouting','on');
+    add_line(path,'BB-CDR PI Adaptation/1','Out1/1','autorouting','on');
+    probeSource='BB-CDR PI Adaptation/1';
+elseif strcmp(direction,'rx')
     boundary=[path '/BB-CDR PI Adaptation'];
     add_block('simulink/Ports & Subsystems/Subsystem',boundary,'Position',[80 230 300 285]);
     setupSubsystem(boundary,1,1);
@@ -193,11 +206,13 @@ if strcmp(direction,'rx')
     add_block('built-in/Note',[boundary '/Boundary note'],'Position',[80 135 310 180],...
         'Name','Stateful BB-CDR / PI / adaptation boundary; core trace remains in dspBbCdr');
     add_line(path,last,'BB-CDR PI Adaptation/1','autorouting','on'); last='BB-CDR PI Adaptation/1';
+    probeSource=last;
+else
+    add_line(path,last,'Out1/1','autorouting','on'); probeSource=last;
 end
-add_line(path,last,'Out1/1','autorouting','on');
 add_block('simulink/Signal Routing/Goto',[path '/white-box probe'],'Position',[80 105 180 135],...
     'GotoTag',sprintf('%sLane%d_probe',direction,index));
-add_line(path,last,'white-box probe/1','autorouting','on');
+add_line(path,probeSource,'white-box probe/1','autorouting','on');
 end
 
 function buildResults(path)

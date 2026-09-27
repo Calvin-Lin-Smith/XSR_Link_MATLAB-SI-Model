@@ -6,7 +6,7 @@ tmp=tempname; mkdir(tmp); cleanup=onCleanup(@()rmdir(tmp,'s')); copyfile(resultR
 t=readtable(fullfile(tmp,'baseline_metrics.csv')); t.ber_upper_95=[]; writetable(t,fullfile(tmp,'baseline_metrics.csv'));
 [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'missing BER bound was accepted');
 copyfile(resultRoot,tmp,'f'); delete(fullfile(tmp,'cdr_lock_trace.csv')); [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'missing CDR trace was accepted');
-copyfile(resultRoot,tmp,'f'); t=readtable(fullfile(tmp,'cdr_lock_trace.csv')); t.locked(:)=false; writetable(t,fullfile(tmp,'cdr_lock_trace.csv'));
+copyfile(resultRoot,tmp,'f'); t=readtable(fullfile(tmp,'cdr_lock_trace.csv')); t.locked(:)=false; t.currently_locked(:)=false; t.continuous_tail_lock(:)=false; writetable(t,fullfile(tmp,'cdr_lock_trace.csv'));
 [ok,~]=validate_vlsi2024_artifacts(tmp); assert(~ok,'unlocked CDR trace was accepted');
 disp('Fix artifact-validator tests OK');
 end

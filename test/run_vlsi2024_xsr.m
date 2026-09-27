@@ -162,23 +162,32 @@ end
 trainedCfg.link.nBits=nBits; trainedCfg.phy.nLane=8;
 trainedCfg.model.useReferenceAlign=false; trainedCfg.model.useManualPhase=~stage.cdrEnabled;
 r=runModel(trainedCfg); p=r.model; rawResult=r.result; nLane=p.nLane;
-lockUI=zeros(nLane,1); laneLocked=false(nLane,1); fullLockTrace=cell(nLane,1);
+lockUI=zeros(nLane,1); laneLocked=false(nLane,1); tailLockLosses=zeros(nLane,1); fullLockTrace=cell(nLane,1);
 for k=1:nLane
     t=p.rxPma.lane(k).cdrTrace; fullLockTrace{k}=t;
-    if stage.cdrEnabled && isstruct(t) && isfield(t,'lockIndex')
-        lockUI(k)=t.lockIndex; laneLocked(k)=getField(t,'currentlyLocked',getField(t,'locked',false));
+    if stage.cdrEnabled && isstruct(t) && isfield(t,'firstValidLockIndex')
+        lockUI(k)=t.firstValidLockIndex; laneLocked(k)=getField(t,'continuousTailLock',false)&&getField(t,'currentlyLocked',false);
+        tailLockLosses(k)=getField(t,'tailLockLossCount',NaN);
     else, lockUI(k)=NaN; end
 end
 budget=debugStageTable(stage,requestedCfg,ctleTrace);
 totalTrainingBudgetUI=sum(budget.consumedUI); trainingEndUI=totalTrainingBudgetUI;
 postWait=getField(stage,'postLockWaitUI',16); originalSkip=requestedCfg.link.skipUI;
-if stage.cdrEnabled && any(laneLocked), latestLock=max(lockUI(laneLocked)); else, latestLock=NaN; end
-if stage.cdrEnabled && all(laneLocked)
-    berStart=max([originalSkip latestLock+postWait]); status='trained';
+firstLock=NaN;
+if stage.cdrEnabled && all(laneLocked) && all(lockUI>0)
+    firstLock=max(lockUI); berStart=max([originalSkip firstLock+postWait]); status='trained';
 else
     berStart=max([originalSkip trainingEndUI]);
     if ~stage.cdrEnabled, status='debug_no_cdr'; else, status='invalid_no_lock'; end
 end
+tailValid=isfinite(berStart)&&stage.cdrEnabled&&all(laneLocked);
+if tailValid
+    for k=1:nLane
+        t=fullLockTrace{k}; idx=berStart+1; levels=t.levelsValidTrace; slips=t.cycleSlipTrace;
+        tailValid=tailValid&&idx<=numel(t.currentlyLockedTrace)&&all(t.currentlyLockedTrace(idx:end))&&all(levels(idx:end))&&~any(slips(idx:end));
+    end
+end
+if stage.cdrEnabled && all(laneLocked) && ~tailValid, status='invalid_tail'; end
 measurementStartSample=berStart*requestedCfg.link.sps+1;
 bitsPerSymbol=1+strcmpi(requestedCfg.link.modulation,'PAM4');
 sentinel=getField(requestedCfg.model.debugOptions,'preLockSentinel',NaN);
@@ -201,18 +210,20 @@ if isfinite(sentinel)
     rawResult.aggregateBer=sum(rawResult.errCnt)/max(sum(rawResult.nMeasured),1);
 end
 result=rawResult; result.berValid=false; result.status=status;
-if stage.cdrEnabled && all(laneLocked) && size(rawResult.rxBits,1)>berStart*bitsPerSymbol
-    [result.errCnt,result.nMeasured,result.ber,result.checker]=p.rawPcs.check(rawResult.rxBits,berStart,p.checkerOptions);
-    result.aggregateBer=sum(result.errCnt)/max(sum(result.nMeasured),1); result.berValid=true;
+if stage.cdrEnabled && all(laneLocked) && tailValid && size(rawResult.rxBits,1)>berStart*bitsPerSymbol
+    checkOptions=p.checkerOptions; checkOptions.measurementStartUI=berStart; checkOptions.tailValid=true;
+    checkOptions.firstValidLockUI=lockUI; checkOptions.tailLockLosses=tailLockLosses; checkOptions.tailCycleSlips=zeros(nLane,1); checkOptions.tailLevelsValid=true(nLane,1);
+    [result.errCnt,result.nMeasured,result.ber,result.checker]=p.rawPcs.check(rawResult.rxBits,berStart,checkOptions);
+    result.aggregateBer=sum(result.errCnt)/max(sum(result.nMeasured),1); result.berValid=all(result.checker.alignmentValid);
 else
-    if stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; result.status=status; end
+    if stage.cdrEnabled && all(laneLocked)&&~tailValid, status='invalid_tail'; elseif stage.cdrEnabled && all(laneLocked), status='invalid_insufficient_bits'; end
     result.errCnt=nan(1,nLane); result.nMeasured=zeros(1,nLane); result.ber=nan(1,nLane); result.aggregateBer=NaN;
 end
 performance=performanceWindow(p,berStart,measurementStartSample,requestedCfg.link.sps,requestedCfg.link.modulation);
 trainedParameters=trainedParameterTable(requestedCfg,trainedCfg,p,stage,ctleTrace);
 appliedCfg=appliedConfig(p,trainedCfg); result.requestedCfg=requestedCfg; result.trainedCfg=trainedCfg;
 result.appliedCfg=appliedCfg; result.trainedParameters=trainedParameters; result.measurementStartUI=berStart;
-result.measurementStartSample=measurementStartSample; result.status=status; result.berValid=result.berValid;
+result.measurementStartSample=measurementStartSample; result.firstValidLockUI=lockUI; result.tailLockLosses=tailLockLosses; result.continuousTailLock=tailValid; result.status=status; result.berValid=result.berValid;
 out=struct('mode','debug_link','status',status,'requestedCfg',requestedCfg,'trainedCfg',trainedCfg,...
     'appliedCfg',appliedCfg,'model',p,'result',result,'rawResult',rawResult,...
     'stateTrace',stateTrace,'ctleTrace',ctleTrace,'stageTrace',budget,'trainedParameters',trainedParameters,...
@@ -220,7 +231,7 @@ out=struct('mode','debug_link','status',status,'requestedCfg',requestedCfg,'trai
     'trainingEndUI',trainingEndUI,'totalTrainingBudgetUI',totalTrainingBudgetUI,...
     'berStartUIInFinalPass',berStart,'measurementStartUI',berStart,'measurementStartSample',measurementStartSample,...
     'postLockWaitUI',postWait,'totalWaitedUI',totalTrainingBudgetUI+berStart,'performance',performance,...
-    'requiredLaneLockUI',latestLock,'berValid',result.berValid,'effectiveCdrEnabled',effectiveCdrEnabled,...
+    'requiredLaneLockUI',firstLock,'firstValidLockUI',lockUI,'tailLockLosses',tailLockLosses,'continuousTailLock',tailValid,'berValid',result.berValid,'effectiveCdrEnabled',effectiveCdrEnabled,...
     'preLockSentinelApplied',isfinite(sentinel),'preLockSentinel',sentinel);
 end
 
@@ -523,11 +534,21 @@ metrics.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,n,1); metrics.lane_context=
 metrics.pam4_mapping=repmat(string(cfg.link.pam4Mapping),n,1); metrics.logical_outer_level=repmat(cfg.txPma.lane.logicalOuterLevel,n,1);
 metrics.physical_target_swing=repmat(cfg.txPma.lane.targetSwing,n,1); metrics.four_levels_valid=false(n,1); metrics.tail_lock=false(n,1);
 metrics.lock_loss_count=zeros(n,1); metrics.checker_lag_ui=nan(n,1); metrics.leveling_scale=nan(n,1);
+metrics.leveling_fit_residual=nan(n,1); metrics.leveling_finite_fraction=nan(n,1);
+metrics.first_valid_lock_ui=nan(n,1); metrics.measurement_start_ui=nan(n,1); metrics.continuous_tail_lock=false(n,1);
+metrics.tail_lock_losses=nan(n,1); metrics.tail_cycle_slips=nan(n,1); metrics.tail_level_valid=false(n,1);
+measurement=getField(r.result,'measurement',struct());
 for k=1:n
     lane=r.model.rxPma.lane(k); metrics.four_levels_valid(k)=getField(lane.levelingMeta,'levelsValid',false)&&getField(lane.cdrTrace,'levelsValid',false);
     metrics.tail_lock(k)=getField(lane.cdrTrace,'currentlyLocked',false); metrics.lock_loss_count(k)=getField(lane.cdrTrace,'lockLossCount',NaN);
     if isfield(r.result,'checker'), metrics.checker_lag_ui(k)=r.result.checker.checkerLagUI(k); end
     metrics.leveling_scale(k)=getField(lane.levelingMeta,'levelingScale',NaN);
+    metrics.leveling_fit_residual(k)=getField(lane.levelingMeta,'fitResidual',NaN); metrics.leveling_finite_fraction(k)=getField(lane.levelingMeta,'finiteFraction',NaN);
+    if isfield(measurement,'firstValidLockUI')
+        metrics.first_valid_lock_ui(k)=measurement.firstValidLockUI(k); metrics.measurement_start_ui(k)=measurement.measurementStartUI;
+        metrics.continuous_tail_lock(k)=measurement.continuousTailLock; metrics.tail_lock_losses(k)=measurement.tailLockLosses(k);
+        metrics.tail_cycle_slips(k)=measurement.tailCycleSlips(k); metrics.tail_level_valid(k)=measurement.tailLevelsValid(k); metrics.tail_lock(k)=metrics.continuous_tail_lock(k);
+    end
 end
 end
 
@@ -560,7 +581,7 @@ cfg.model.appliedDac=p.txPma.lane(1).driver.dacMeta;
 end
 
 function upper=binomialUpper95(errors,measured)
-if measured<=0, upper=NaN;
+if ~isfinite(errors)||~isfinite(measured)||measured<=0, upper=NaN;
 elseif errors<=0, upper=3/measured;
 elseif errors>=measured, upper=1;
 else, upper=betaincinv(0.95,errors+1,measured-errors);
@@ -581,6 +602,7 @@ probes.rawSamples=takeProbe(lane.rawSamples,limit); probes.logicalSamples=takePr
 lm=lane.levelingMeta; probes.rawCentroids=getField(lm,'rawCentroids',nan(1,4)); probes.logicalCentroids=getField(lm,'logicalCentroids',nan(1,4));
 probes.occupancy=getField(lm,'occupancy',nan(1,4)); probes.occupancyCount=getField(lm,'occupancyCount',nan(1,4));
 probes.levelingOffset=getField(lm,'levelingOffset',NaN); probes.levelingScale=getField(lm,'levelingScale',NaN);
+probes.fitResidual=getField(lm,'fitResidual',NaN); probes.fitResidualTolerance=getField(lm,'fitResidualTolerance',NaN); probes.finiteFraction=getField(lm,'finiteFraction',NaN);
 probes.levelsValid=getField(lm,'levelsValid',false); probes.pam4Mapping=cfg.link.pam4Mapping; probes.logicalOuterLevel=cfg.txPma.lane.logicalOuterLevel;
 probes.edgeSamples=takeProbe(slicer.edgeSamples,limit); probes.edgeDetectorOutput=slicer.edgeDetectorOutput;
 probes.spareSamples=takeProbe(slicer.spareSamples,limit); probes.spareMonitorOutput=slicer.spareMonitorOutput;
@@ -626,18 +648,24 @@ end
 function writeCdrArtifacts(p,resultRoot,cfg)
 lane=p.rxPma.lane(1); t=lane.cdrTrace; n=numel(t.piCodeTrace); k=(1:n)';
 levelOccMin=nan(n,1); for ii=1:n, v=t.levelOccupancyTrace(ii,:); v=v(isfinite(v)); if ~isempty(v), levelOccMin(ii)=min(v); end, end
+firstLockUI=getField(p.measurementMeta,'firstValidLockUI',repmat(getField(t,'firstValidLockIndex',NaN),p.nLane,1));
+measurementStartUI=getField(p.measurementMeta,'measurementStartUI',NaN); continuousTailLock=getField(p.measurementMeta,'continuousTailLock',false);
+tailLockLosses=getField(p.measurementMeta,'tailLockLosses',nan(p.nLane,1)); tailCycleSlips=getField(p.measurementMeta,'tailCycleSlips',nan(p.nLane,1)); tailLevelsValid=getField(p.measurementMeta,'tailLevelsValid',false(p.nLane,1));
 lock=table(k,logical(t.cdr_lock_trace(:)),logical(t.transitionTrace(:)),t.piCodeTrace(:),t.piRawCodeTrace(:),...
     t.piWrappedCodeTrace(:),t.piAppliedCodeTrace(:),t.piMismatchTrace(:),t.piWrapCountTrace(:),t.errorTrace(:),...
     t.dataPhaseUI(:),t.edgePhaseUI(:),t.residualPhaseUI(:),repmat(1,n,1),repmat(cfg.link.seed,n,1),...
     repmat(string(cfg.model.trainingMode),n,1),logical(t.currentlyLockedTrace(:)),repmat(logical(t.everLocked),n,1),...
     repmat(t.lockLossCount,n,1),logical(t.cycleSlipTrace(:)),t.piUnwrappedCodeTrace(:),t.piSampleTimeTrace(:),...
-    logical(t.levelsValidTrace(:)),levelOccMin,t.logicalEyeMarginTrace(:),...
+    logical(t.levelsValidTrace(:)),levelOccMin,t.logicalEyeMarginTrace(:),logical(t.lockStartTrace(:)),logical(t.lockLossTrace(:)),...
+    logical(t.piWrapEventTrace(:)),repmat(firstLockUI(1),n,1),repmat(measurementStartUI,n,1),repmat(continuousTailLock,n,1),...
+    repmat(tailLockLosses(1),n,1),repmat(tailCycleSlips(1),n,1),repmat(tailLevelsValid(1),n,1),...
     'VariableNames',{'sample','locked','transition','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
     'pi_mismatch_LSB','pi_wrap_count','phase_error','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed','training_mode',...
-    'currently_locked','ever_locked','lock_loss_count','cycle_slip','pi_unwrapped_code','pi_sample_time','four_level_valid','four_occupancy_min','logical_eye_margin'});
+    'currently_locked','ever_locked','lock_loss_count','cycle_slip','pi_unwrapped_code','pi_sample_time','four_level_valid','four_occupancy_min','logical_eye_margin',...
+    'lock_start','lock_loss','pi_wrap_event','first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','tail_lock_losses','tail_cycle_slips','tail_level_valid'});
 writetable(lock,fullfile(resultRoot,'cdr_lock_trace.csv'));
 stride=max(1,ceil(n/4096)); pi=lock(1:stride:end,{'sample','pi_code','pi_raw_code','pi_wrapped_code','pi_applied_code',...
-    'pi_mismatch_LSB','pi_wrap_count','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed'});
+    'pi_mismatch_LSB','pi_wrap_count','pi_wrap_event','cycle_slip','pi_unwrapped_code','pi_sample_time','data_phase_UI','edge_phase_UI','residual_phase_UI','lane','seed'});
 pi.pi_trace_stride=repmat(stride,height(pi),1); pi.trace_context=repmat("downsampled PI audit trace",height(pi),1);
 writetable(pi,fullfile(resultRoot,'pi_code_trace.csv'));
 edges=[-Inf linspace(-0.5,0.5,21) Inf]; counts=histcounts(t.residualPhaseUI,edges); centers=[-Inf (edges(2:end-2)+edges(3:end-1))/2 Inf];
@@ -650,7 +678,8 @@ cm=p.rawPcs.checkerMeta; laneIds=(1:p.nLane)'; checker=table(laneIds,cm.checkerL
     p.rawPcs.errCnt(:)./max(cm.measurementBits(:),1),repmat(cfg.link.seed,p.nLane,1),...
     'VariableNames',{'lane','checker_lag_ui','sync_bits','measurement_bits','alignment_valid','framing_valid','errors','measured_bits','empirical_BER','seed'});
 checker.ber_upper_95=arrayfun(@binomialUpper95,checker.errors,checker.measured_bits);
-checker.mode=repmat("paper_integer_ui",height(checker),1); checker.measurement_start_ui=cm.measurementStartUI(:);
+checker.mode=repmat("paper_integer_ui",height(checker),1); checker.measurement_start_ui=repmat(measurementStartUI,height(checker),1); checker.first_valid_lock_ui=firstLockUI(:);
+checker.continuous_tail_lock=repmat(continuousTailLock,height(checker),1); checker.tail_lock_losses=tailLockLosses(:); checker.tail_cycle_slips=tailCycleSlips(:); checker.tail_level_valid=tailLevelsValid(:);
 checker.rate_context_Gbps=repmat(cfg.paper.berRate_Gbps,height(checker),1); checker.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(checker),1);
 checker.lane_context="lane"+string(laneIds); checker.sample_bits=repmat(cfg.link.nBits,height(checker),1);
 writetable(checker,fullfile(resultRoot,'checker_alignment.csv'));

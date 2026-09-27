@@ -112,7 +112,7 @@ D2DPHY
 ### 2.2 bit 到 BER
 
 1. RawPcs.run 生成 PRBS31 referenceBits；dspMap 使用唯一 Gray PAM4 contract（`00→−3、01→−1、11→+1、10→+3`）映射 bit pair。
-2. TxLane 依次执行 signed FFE、Serializer 过采样和 Driver；Driver 可执行 targetSwing 钳位、gainError 与 DAC quantization。
+2. TxLane 依次执行 signed FFE、Serializer 过采样和 Driver；paper Driver 在 logical `[-3,3]`/`logicalOuterLevel` 域执行 gainError、校准与 DAC quantization，`targetSwing` 只作为 physical swing metadata，不是 logical clipping bound。
 3. 每个 lane 经过 Channel。paper mode 使用 dspChannel 的 analytic_il，在 refFreq_GHz=28、baud_GBd=56.25 处校准 lossAtRef_dB。
 4. D2DPHY.run 在 channel output 上按 link.seed 加入由 snr_dB 指定的 RMS 高斯噪声。
 5. RxPma 生成 jitter；RxLane 经过 Afe，再选择 legacy reference alignment、manual phase 或 BB-CDR。
@@ -742,7 +742,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；在 ffeMo
 
 ### D4：DAC quantization on/off
 
-目的：隔离 Driver 的 206-level 量化和 targetSwing calibration。
+目的：隔离 Driver 的 206-level logical PAM4 量化和 swing metadata；logical clipping bound 为 `logicalOuterLevel`，`targetSwing` 只记录 physical target。
 
 ~~~matlab
 root = 'E:\Master_Record\D2D_matlab_model';
@@ -765,7 +765,7 @@ disp(outOn.appliedCfg.txPma.lane.enableDacQuantization);
 disp(outOff.appliedCfg.txPma.lane.enableDacQuantization);
 ~~~
 
-GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 enableDacQuantization 设 true 后 Run x8 Link，记录 TX DAC / pad 和 Debug.appliedCfg；改为 false 后重新 Run x8 Link。预期 on 时 TX pad 被钳位并落在 targetSwing/(dacLevels−1) 的离散步长，off 时 dacMeta 只有 enabled=false、appliedLevels=0。查看 Driver.dacMeta 和 TX DAC / pad。该演示不推导 SST 段权重、7.5-bit 电路、功耗或真实电压 swing。
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 enableDacQuantization 设 true 后 Run x8 Link，记录 TX DAC / pad 和 Debug.appliedCfg；改为 false 后重新 Run x8 Link。预期 on 时 TX pad 在 `[-logicalOuterLevel,+logicalOuterLevel]` 内按 `6/(dacLevels−1)` 离散，`targetSwing` 只出现在 dacMeta physical metadata，off 时 dacMeta 标记 enabled=false。查看 Driver.dacMeta 和 TX DAC / pad。该演示不推导 SST 段权重、7.5-bit 电路、功耗或真实电压 swing。
 
 ### D5：AC/DC 与 AC pre/post
 

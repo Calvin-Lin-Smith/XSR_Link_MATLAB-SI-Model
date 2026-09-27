@@ -9,12 +9,14 @@ if ~isempty(varargin)
 end
 minOccupancy=getField(options,'minOccupancy',0.02);
 maxIterations=getField(options,'maxIterations',32);
+fitResidualTolerance=getField(options,'fitResidualTolerance',0.15);
 validateattributes(minOccupancy,{'numeric'},{'scalar','real','finite','>=',0,'<',0.25});
 validateattributes(maxIterations,{'numeric'},{'scalar','integer','positive'});
+validateattributes(fitResidualTolerance,{'numeric'},{'scalar','real','finite','nonnegative'});
 c=dspPam4Contract(); finiteMask=isfinite(rawSamples); values=rawSamples(finiteMask); n=numel(values);
 rawCentroids=nan(1,4); occupancyCount=zeros(1,4); occupancy=zeros(1,4); assignments=zeros(n,1);
-levelsValid=false; levelingOffset=NaN; levelingScale=NaN; logicalCentroids=nan(1,4);
-if n>=4
+levelsValid=false; levelingOffset=NaN; levelingScale=NaN; logicalCentroids=nan(1,4); fitResidual=NaN;
+if n>=4 && all(finiteMask)
     sorted=sort(values); seedIndex=max(1,min(n,round([0.125 0.375 0.625 0.875]*(n-1)+1)));
     centroids=sorted(seedIndex).';
     for iter=1:maxIterations
@@ -33,12 +35,14 @@ if n>=4
         if occupancyCount(k)>0, rawCentroids(k)=mean(values(assignments==k)); end
     end
     separation=diff(rawCentroids); scaleFloor=eps(max(1,max(abs(rawCentroids))));
-    levelsValid=all(isfinite(rawCentroids)) && all(separation>scaleFloor) && all(occupancy>=minOccupancy);
-    if levelsValid
+    clustersValid=all(isfinite(rawCentroids)) && all(separation>scaleFloor) && all(occupancy>=minOccupancy);
+    if clustersValid
         target=c.levels; center=mean(rawCentroids);
         levelingScale=(target*(rawCentroids-center).')/sum((rawCentroids-center).^2);
         levelingOffset=center;
-        levelsValid=isfinite(levelingScale) && levelingScale>0;
+        logicalCentroids=(rawCentroids-levelingOffset)*levelingScale;
+        fitResidual=max(abs(logicalCentroids-target));
+        levelsValid=isfinite(levelingScale) && levelingScale>0 && isfinite(fitResidual) && fitResidual<=fitResidualTolerance;
     end
 end
 logicalSamples=rawSamples;
@@ -60,7 +64,8 @@ end
 meta=struct('levelsValid',levelsValid,'rawSamples',rawSamples,'logicalSamples',logicalSamples,...
     'rawCentroids',rawCentroids,'logicalCentroids',logicalCentroids,'occupancy',occupancy,...
     'occupancyCount',occupancyCount,'minOccupancy',minOccupancy,'levelingOffset',levelingOffset,...
-    'levelingScale',levelingScale,'offset',levelingOffset,'scale',levelingScale,...
+    'levelingScale',levelingScale,'offset',levelingOffset,'scale',levelingScale,'fitResidual',fitResidual,...
+    'centroidFitResidual',fitResidual,'fitResidualTolerance',fitResidualTolerance,'finiteFraction',sum(finiteMask)/max(numel(rawSamples),1),...
     'withinClusterSigma',withinClusterSigma,'decisions',decisions,'thresholds',c.thresholds,...
     'levels',c.levels,'contract',c);
 if wasRow, logicalSamples=logicalSamples.'; meta.logicalSamples=meta.logicalSamples.'; meta.decisions=meta.decisions.'; end

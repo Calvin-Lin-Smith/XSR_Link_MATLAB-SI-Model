@@ -12,7 +12,10 @@ updateCadence=getField(options,'updateCadence',1); bandwidthProxy=getField(optio
 minTransitions=getField(options,'minTransitions',max(4,ceil(lockWindow/8))); maxCodeSpan=getField(options,'maxCodeSpanCodes',8);
 staticPhaseSkewUI=getField(options,'staticPhaseSkewUI',0); staticDutyCorrectionUI=getField(options,'staticDutyCorrectionUI',0);
 samplerOffsetCodes=getField(options,'samplerOffsetCodes',0); minOccupancy=getField(options,'minOccupancy',0.02);
-minEyeMargin=getField(options,'minEyeMargin',0); levelingValid=logical(getField(options,'levelingValid',true));
+minEyeMargin=getField(options,'minEyeMargin',0.08); levelingValid=logical(getField(options,'levelingValid',true));
+holdoverOnLock=logical(getField(options,'holdoverOnLock',isPam4));
+lockConfirmCount=getField(options,'lockConfirmCount',8); lossConfirmCount=getField(options,'lossConfirmCount',32);
+levelValidationWindow=getField(options,'levelValidationWindow',512);
 piOptions=struct('nCodes',nCodes,'mismatchBoundLSB',getField(options,'mismatchBoundLSB',0),...
     'mismatchSeed',getField(options,'mismatchSeed',0));
 validateattributes(initialPhaseUI,{'numeric'},{'scalar','real','finite'});
@@ -28,7 +31,11 @@ validateattributes(staticDutyCorrectionUI,{'numeric'},{'scalar','real','finite'}
 validateattributes(samplerOffsetCodes,{'numeric'},{'scalar','real','finite'});
 validateattributes(minOccupancy,{'numeric'},{'scalar','real','finite','>=',0,'<',0.25});
 validateattributes(minEyeMargin,{'numeric'},{'scalar','real','finite','nonnegative'});
+validateattributes(lockConfirmCount,{'numeric'},{'scalar','integer','positive'});
+validateattributes(lossConfirmCount,{'numeric'},{'scalar','integer','positive'});
+validateattributes(levelValidationWindow,{'numeric'},{'scalar','integer','positive'});
 rawCode=initialPhaseUI*nCodes; nSym=floor((numel(x)-1)/sps)+1;
+levelValidationWindow=min(levelValidationWindow,max(lockWindow,ceil(max(nSym,1)/2)));
 jitterUI=getField(options,'jitterUI',zeros(max(nSym,0),1)); jitterUI=jitterUI(:);
 if isscalar(jitterUI), jitterUI=repmat(jitterUI,max(nSym,1),1); end
 if numel(jitterUI)<nSym, jitterUI(end+1:nSym,1)=0; end
@@ -41,7 +48,9 @@ piRawCodeTrace=zeros(max(nSym,0),1); piWrappedCodeTrace=zeros(max(nSym,0),1); pi
 piMismatchTrace=zeros(max(nSym,0),1); piWrapCountTrace=zeros(max(nSym,0),1);
 levelOccupancyTrace=nan(max(nSym,0),4); levelCentroidTrace=nan(max(nSym,0),4); levelSigmaTrace=nan(max(nSym,0),4);
 logicalEyeMarginTrace=nan(max(nSym,0),1); levelsValidTrace=false(max(nSym,0),1);
-stable=0; lockIndex=0; lockLossCount=0; currentlyLocked=false; prev=NaN; transitionHistory=[];
+lockStartTrace=false(max(nSym,0),1); lockLossTrace=false(max(nSym,0),1);
+lockCandidateTrace=false(max(nSym,0),1); lockInvalidRunTrace=zeros(max(nSym,0),1);
+stable=0; invalidStable=0; lockIndex=0; firstValidLockIndex=0; latestLockIndex=0; lockLossCount=0; currentlyLocked=false; prev=NaN; transitionHistory=[];
 for k=1:nSym
     [phase,piMeta]=dspPiClock(rawCode,sps,piOptions);
     piRawCodeTrace(k)=piMeta.rawCode; piWrappedCodeTrace(k)=piMeta.wrappedCode;
@@ -67,49 +76,70 @@ for k=1:nSym
                 else, residualPhaseUI(k)=wrapPhase(phase-median(transitionHistory(max(1,end-7):end))); end
                 transitionHistory=[transitionHistory phase]; if numel(transitionHistory)>64, transitionHistory=transitionHistory(end-63:end); end %#ok<AGROW>
             end
-            if enabled && mod(k-1,updateCadence)==0 && transitionTrace(k) && errorTrace(k)~=0
+            if enabled && mod(k-1,updateCadence)==0 && transitionTrace(k) && errorTrace(k)~=0 && ~(holdoverOnLock && currentlyLocked)
                 rawCode=rawCode+max(-maxStep,min(maxStep,loopGain*errorTrace(k)));
             end
         end
     end
     levelValid=true; eyeMargin=NaN;
-    if isPam4 && k>=lockWindow
-        recent=(k-lockWindow+1):k;
+    if isPam4 && k>=levelValidationWindow
+        recent=(k-levelValidationWindow+1):k;
         [levelValid,levelOccupancyTrace(k,:),levelCentroidTrace(k,:),levelSigmaTrace(k,:),eyeMargin]=...
             levelStats(decisionTrace(recent),samples(recent),minOccupancy);
         levelsValidTrace(k)=levelValid; logicalEyeMarginTrace(k)=eyeMargin;
     elseif ~isPam4
         levelsValidTrace(k)=true;
     end
-    if enabled && k>=lockWindow
+    lockWindowReady=k>=lockWindow && (~isPam4 || k>=levelValidationWindow);
+    if enabled && lockWindowReady
         recent=(k-lockWindow+1):k; transitionRecent=transitionTrace(recent); stableRecent=recent(floor(numel(recent)/2)+1:end);
         residualRecent=abs(residualPhaseUI(recent(transitionRecent))); phaseValues=piRawCodeTrace(stableRecent);
         if isempty(residualRecent), residualCriterion=0; else, sortedResidual=sort(residualRecent); residualCriterion=sortedResidual(max(1,ceil(0.9*numel(sortedResidual)))); end
         phaseSpan=max(phaseValues)-min(phaseValues);
         candidate=sum(transitionRecent)>=minTransitions && residualCriterion<=lockTol && phaseSpan<=maxCodeSpan;
         if isPam4, candidate=candidate && levelingValid && levelValid && eyeMargin>=minEyeMargin; end
+        lockCandidateTrace(k)=candidate;
         wasLocked=currentlyLocked;
         if candidate
-            stable=stable+1; if lockIndex==0, lockIndex=k; end
+            stable=stable+1; invalidStable=0;
         else
-            stable=0;
+            invalidStable=invalidStable+1;
+            if ~currentlyLocked || invalidStable>=lossConfirmCount, stable=0; end
         end
-        currentlyLocked=stable>0;
-        if wasLocked && ~currentlyLocked, lockLossCount=lockLossCount+1; end
+        if ~currentlyLocked && stable>=lockConfirmCount, currentlyLocked=true; end
+        if currentlyLocked && candidate, currentlyLocked=true; end
+        if currentlyLocked && ~candidate && invalidStable>=lossConfirmCount, currentlyLocked=false; end
+        if currentlyLocked, lockInvalidRunTrace(k)=invalidStable; end
+        if ~wasLocked && currentlyLocked
+            lockStartTrace(k)=true; latestLockIndex=k; if firstValidLockIndex==0, firstValidLockIndex=k; lockIndex=k; end
+        elseif wasLocked && ~currentlyLocked
+            lockLossCount=lockLossCount+1; lockLossTrace(k)=true;
+        end
     end
     lockTrace(k)=enabled && currentlyLocked; prev=decisionTrace(k);
 end
-cycleSlipTrace=false(max(nSym,0),1);
-if nSym>1, cycleSlipTrace(2:end)=abs(diff(piRawCodeTrace))>nCodes/2 | diff(piWrapCountTrace)~=0; end
+piWrapEventTrace=false(max(nSym,0),1); cycleSlipTrace=false(max(nSym,0),1);
+if nSym>1
+    piWrapEventTrace(2:end)=diff(piWrapCountTrace)~=0;
+    cycleSlipTrace(2:end)=abs(diff(piRawCodeTrace))>nCodes/2;
+end
+tailLockLossCount=0; continuousTailLock=false;
+if firstValidLockIndex>0
+    tailLockLossCount=sum(lockLossTrace(firstValidLockIndex:end));
+    continuousTailLock=currentlyLocked&&all(lockTrace(firstValidLockIndex:end));
+end
 trace=struct('enabled',enabled,'nCodes',nCodes,'initialPhaseUI',initialPhaseUI,...
     'loopGainCodes',loopGain,'loopBandwidthProxy',bandwidthProxy,'updateCadence',updateCadence,...
     'lockWindow',lockWindow,'lockToleranceUI',lockTol,'minTransitions',minTransitions,'maxCodeSpanCodes',maxCodeSpan,...
     'staticPhaseSkewUI',staticPhaseSkewUI,'staticDutyCorrectionUI',staticDutyCorrectionUI,'samplerOffsetCodes',samplerOffsetCodes,...
-    'lockIndex',lockIndex,'locked',lockIndex>0,'everLocked',lockIndex>0,'currentlyLocked',enabled && currentlyLocked,...
-    'lockLossCount',lockLossCount,'cdr_lock_trace',lockTrace,'currentlyLockedTrace',lockTrace,...
+    'lockIndex',lockIndex,'firstValidLockIndex',firstValidLockIndex,'firstLockIndex',firstValidLockIndex,'latestLockIndex',latestLockIndex,...
+    'locked',lockIndex>0,'everLocked',lockIndex>0,'currentlyLocked',enabled && currentlyLocked,'continuousTailLock',continuousTailLock,...
+    'lockLossCount',lockLossCount,'tailLockLossCount',tailLockLossCount,'lockStartTrace',lockStartTrace,'lockLossTrace',lockLossTrace,...
+    'lockCandidateTrace',lockCandidateTrace,'lockInvalidRunTrace',lockInvalidRunTrace,'lockConfirmCount',lockConfirmCount,'lossConfirmCount',lossConfirmCount,'levelValidationWindow',levelValidationWindow,...
+    'cdr_lock_trace',lockTrace,'currentlyLockedTrace',lockTrace,...
     'piCodeTrace',piCodeTrace,'rawCodeTrace',piRawCodeTrace,'piRawCodeTrace',piRawCodeTrace,...
     'piWrappedCodeTrace',piWrappedCodeTrace,'piAppliedCodeTrace',piAppliedCodeTrace,'piMismatchTrace',piMismatchTrace,...
-    'piWrapCountTrace',piWrapCountTrace,'piUnwrappedCodeTrace',piRawCodeTrace,'piSampleTimeTrace',(1:nSym)',...
+    'piWrapCountTrace',piWrapCountTrace,'piWrapEventTrace',piWrapEventTrace,'piUnwrappedCodeTrace',piRawCodeTrace,'piSampleTimeTrace',(1:nSym)',...
     'cycleSlipTrace',cycleSlipTrace,'cycleSlipCount',sum(cycleSlipTrace),...
     'errorTrace',errorTrace,'earlyLateTrace',earlyLateMetric,'transitionTrace',transitionTrace,'transitionPhaseUI',transitionPhaseUI,...
     'dataPhaseUI',dataPhaseUI,'edgePhaseUI',edgePhaseUI,'appliedPhaseUI',appliedPhaseUI,'residualPhaseUI',residualPhaseUI,...
@@ -119,7 +149,7 @@ trace=struct('enabled',enabled,'nCodes',nCodes,'initialPhaseUI',initialPhaseUI,.
     'jitterUI',jitterUI,'piOptions',piOptions,'levelOccupancyTrace',levelOccupancyTrace,'levelCentroidTrace',levelCentroidTrace,...
     'levelSigmaTrace',levelSigmaTrace,'logicalEyeMarginTrace',logicalEyeMarginTrace,'levelsValidTrace',levelsValidTrace,...
     'levelsValid',isPam4 && levelingValid && any(levelsValidTrace),'minOccupancy',minOccupancy,'minEyeMargin',minEyeMargin,...
-    'levelingValid',levelingValid,'residualDefinition','phase difference from recent received-transition decisions',...
+    'levelingValid',levelingValid,'holdoverOnLock',holdoverOnLock,'residualDefinition','phase difference from recent received-transition decisions',...
     'lockCriterion','minimum RX transitions plus recent PI-code stability, PAM4 four-level validity, and transition-phase residual');
 trace.piMeta=struct('rawCode',piRawCodeTrace,'wrappedCode',piWrappedCodeTrace,'appliedCode',piAppliedCodeTrace,...
     'mismatchLSB',piMismatchTrace,'wrapCount',piWrapCountTrace,'phaseUI',appliedPhaseUI);

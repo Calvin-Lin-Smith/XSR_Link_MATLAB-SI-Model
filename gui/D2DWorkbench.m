@@ -60,7 +60,7 @@ classdef D2DWorkbench < handle
             uibutton(buttonRow,'Text','Load from Simulink','ButtonPushedFcn',@(s,e)app.loadSharedConfig());
             uilabel(buttonRow,'Text','Requested paper cfg stays separate from trained/applied debug values',...
                 'HorizontalAlignment','center','FontColor',[0.35 0.4 0.48]);
-            uilabel(buttonRow,'Text','Post-lock metrics use one global mission window',...
+            uilabel(buttonRow,'Text','Gray PAM4 (read-only): 00→-3, 01→-1, 11→+1, 10→+3 | thresholds [-2 0 2]',...
                 'HorizontalAlignment','center','FontColor',[0.35 0.4 0.48]);
 
             actions=uipanel(cg,'Title','Paper actions','BackgroundColor',[1 1 1]); actions.Layout.Row=2;
@@ -291,6 +291,11 @@ classdef D2DWorkbench < handle
                 case 'RX AC pre', x=app.Phy.rxPma.lane(k).afe.acPreOut;
                 case 'RX AC post', x=app.Phy.rxPma.lane(k).afe.acPostOut;
                 case 'RX CTLE output', x=app.performanceProbe(k,'ctleOut');
+                case 'RX raw samples', x=app.performanceProbe(k,'rawSamples'); isWave=false;
+                case 'RX logical samples', x=app.performanceProbe(k,'logicalSamples'); isWave=false;
+                case 'RX leveling centroids', x=getField(app.Phy.rxPma.lane(k).levelingMeta,'logicalCentroids',[]); isWave=false;
+                case 'RX leveling occupancy', x=getField(app.Phy.rxPma.lane(k).levelingMeta,'occupancy',[]); isWave=false;
+                case 'RX leveling scale', x=getField(app.Phy.rxPma.lane(k).levelingMeta,'levelingScale',NaN); isWave=false;
                 case 'RX level-shifted samples', x=app.performanceProbe(k,'levelShiftedSamples'); isWave=false;
                 case 'RX data samples', x=app.performanceProbe(k,'dataSamples'); isWave=false;
                 case 'RX edge samples', x=app.performanceProbe(k,'edgeSamples'); isWave=false;
@@ -311,6 +316,8 @@ classdef D2DWorkbench < handle
             end
             lane=app.Phy.rxPma.lane(k); switch name
                 case 'ctleOut', x=lane.afe.ctleOut;
+                case 'rawSamples', x=lane.rawSamples;
+                case 'logicalSamples', x=lane.logicalSamples;
                 case 'levelShiftedSamples', x=lane.slicer.levelShiftedSamples;
                 case 'dataSamples', x=lane.dataSamples;
                 case 'edgeSamples', x=lane.edgeSamples;
@@ -371,6 +378,7 @@ classdef D2DWorkbench < handle
         end
         function items=probeItems()
             items={'TX FFE output','TX DAC / pad','Channel output','RX termination','RX AC pre','RX AC post','RX CTLE output',...
+                'RX raw samples','RX logical samples','RX leveling centroids','RX leveling occupancy','RX leveling scale',...
                 'RX level-shifted samples','RX data samples','RX edge samples','RX edge detector','RX spare samples',...
                 'PI code','CDR error','CDR lock','Adaptation objective','FFE tap trace'};
         end
@@ -429,7 +437,10 @@ classdef D2DWorkbench < handle
                 if strcmp(path,'model.cdrOptions.loopGainCodes') && (~isscalar(value)||value<0), error('CDR loop gain must be nonnegative'); end
                 if contains(path,'BudgetUI') && (~isscalar(value)||value<0||value~=fix(value)), error('UI budget must be a nonnegative integer'); end
                 if strcmp(path,'model.cdrOptions.nCodes') && (~isscalar(value)||value<2||value~=fix(value)), error('PI code count must be an integer >= 2'); end
-                if contains(path,'thresholdAssumptions') && numel(value)~=3, error('PAM4 requires three thresholds'); end
+                if contains(path,'thresholdAssumptions')
+                    if numel(value)~=3, error('PAM4 requires three thresholds'); end
+                    c=dspPam4Contract(); if ~isequal(value(:),c.thresholds(:)), error('PAM4 thresholds must equal the shared contract'); end
+                end
                 if contains(path,'mismatchBoundLSB') && (value<0||value>=0.5), error('PI mismatch bound must be in [0,0.5)'); end
                 if contains(path,'postLockWaitUI') && (value<0||~isscalar(value)||value~=fix(value)), error('post-lock wait must be a nonnegative integer'); end
             end
@@ -448,7 +459,11 @@ classdef D2DWorkbench < handle
             assert(numel(cfg.txPma.lane.ffeOffsets)==numel(cfg.txPma.lane.ffeCoeffs) && ...
                 numel(unique(cfg.txPma.lane.ffeOffsets))==numel(cfg.txPma.lane.ffeOffsets) && any(cfg.txPma.lane.ffeOffsets==0),...
                 'signed FFE offsets must be unique and include zero');
-            assert(numel(cfg.rxPma.lane.samplerRoles.thresholdAssumptions)==3,'PAM4 sampler thresholds required');
+            c=dspPam4Contract(); assert(isequal(cfg.rxPma.lane.samplerRoles.thresholdAssumptions(:),c.thresholds(:)),'PAM4 sampler thresholds must equal the shared contract');
         end
     end
+end
+
+function value=getField(s,name,default)
+if isstruct(s)&&isfield(s,name), value=s.(name); else, value=default; end
 end

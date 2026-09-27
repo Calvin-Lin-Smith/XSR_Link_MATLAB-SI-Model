@@ -39,9 +39,10 @@ validateattributes(nBits,{'numeric'},{'scalar','integer','positive'});
 end
 
 function pass=baselineRunPass(base,resultRoot)
-lock=readtable(fullfile(resultRoot,'cdr_lock_trace.csv')); locked=all(lock.currently_locked(end,:));
+measurement=getField(base.result,'measurement',struct()); locked=getField(measurement,'continuousTailLock',false);
 pass=base.cfg.model.useReferenceAlign==false && all(base.result.nMeasured>0) && all(base.result.errCnt>=0) &&...
-    all(isfinite(base.result.ber)) && locked && base.result.aggregateBer<0.25;
+    all(isfinite(base.result.ber)) && locked && all(getField(measurement,'tailLockLosses',1)==0) &&...
+    all(getField(measurement,'tailCycleSlips',1)==0) && base.result.aggregateBer<0.25;
 end
 
 function pass=pam4ContractPass(cfg)
@@ -65,16 +66,19 @@ pass=true; for k=1:base.model.nLane, pass=pass&&getField(base.model.rxPma.lane(k
 end
 
 function pass=tailLockPass(base)
-pass=true; for k=1:base.model.nLane, pass=pass&&getField(base.model.rxPma.lane(k).cdrTrace,'currentlyLocked',false); end
+measurement=getField(base.result,'measurement',struct()); pass=getField(measurement,'continuousTailLock',false)&&...
+    all(getField(measurement,'tailLockLosses',1)==0)&&all(getField(measurement,'tailCycleSlips',1)==0)&&all(getField(measurement,'tailLevelsValid',false));
 end
 
 function pass=checkerAlignmentPass(base)
 pass=isfield(base.result,'checker')&&all(base.result.checker.alignmentValid)&&all(base.result.checker.framingValid)&&...
-    all(isfinite(base.result.checker.checkerLagUI));
+    all(isfinite(base.result.checker.checkerLagUI))&&getField(base.result.checker,'continuousTailLock',false)&&...
+    isequaln(base.result.checker.measurementStartUI,base.result.measurement.measurementStartUI);
 end
 
 function pass=berSanityPass(base)
-pass=isfinite(base.result.aggregateBer)&&base.result.aggregateBer<0.25&&all(base.result.ber<0.25);
+pass=isfinite(base.result.aggregateBer)&&base.result.aggregateBer<0.25&&all(base.result.ber<0.25)&&...
+    getField(base.result.measurement,'continuousTailLock',false)&&all(base.result.nMeasured>0);
 end
 
 function pass=staticRunPass(static,resultRoot)
@@ -97,12 +101,20 @@ for im=1:numel(modes)
         c.rxPma.lane.enableAcPre=any(strcmp(modes{im},{'pre-only','pre+post'})); c.rxPma.lane.enableAcPost=any(strcmp(modes{im},{'post-only','pre+post'}));
         r=runLocal(c); lane=r.model.rxPma.lane(1); tr=lane.cdrTrace; margins=tr.logicalEyeMarginTrace(isfinite(tr.logicalEyeMarginTrace));
         if isempty(margins), eyeMargin=NaN; else, eyeMargin=margins(end); end
-        valid=lane.levelingMeta.levelsValid&&getField(tr,'levelsValid',false); tail=getField(tr,'currentlyLocked',false); checker=getField(r.result,'checker',struct());
+        measurement=getField(r.result,'measurement',struct()); valid=lane.levelingMeta.levelsValid&&getField(tr,'levelsValid',false);
+        tail=getField(measurement,'continuousTailLock',false)&&all(getField(measurement,'tailLockLosses',1)==0)&&all(getField(measurement,'tailCycleSlips',1)==0);
+        checker=getField(r.result,'checker',struct());
         if isfield(checker,'checkerLagUI'), lag=checker.checkerLagUI(1); else, lag=NaN; end
-        rows=[rows; corners(ic) im c.rxPma.lane.enableAcPre c.rxPma.lane.enableAcPost valid tail eyeMargin r.result.aggregateBer binomialUpper95(sum(r.result.errCnt),sum(r.result.nMeasured)) lag getField(lane.levelingMeta,'levelingScale',NaN)]; %#ok<AGROW>
+        errors=sum(r.result.errCnt); measured=sum(r.result.nMeasured); measuredValid=valid&&tail&&isfinite(eyeMargin)&&eyeMargin>0&&all(isfinite(r.result.ber));
+        upper=binomialUpper95(errors,measured);
+        firstUI=getField(measurement,'firstValidLockUI',NaN); if numel(firstUI)>1, firstUI=firstUI(1); end
+        startUI=getField(measurement,'measurementStartUI',NaN); tailLoss=getField(measurement,'tailLockLosses',NaN); if numel(tailLoss)>1, tailLoss=tailLoss(1); end
+        tailSlip=getField(measurement,'tailCycleSlips',NaN); if numel(tailSlip)>1, tailSlip=tailSlip(1); end
+        tailLevel=getField(measurement,'tailLevelsValid',false); if numel(tailLevel)>1, tailLevel=tailLevel(1); end
+        rows=[rows; corners(ic) im c.rxPma.lane.enableAcPre c.rxPma.lane.enableAcPost valid tail measuredValid eyeMargin errors measured r.result.aggregateBer upper lag getField(lane.levelingMeta,'levelingScale',NaN) firstUI startUI getField(measurement,'continuousTailLock',false) tailLoss tailSlip tailLevel]; %#ok<AGROW>
     end
 end
-t=array2table(rows,'VariableNames',{'cornerRelNyq','modeIndex','ac_pre_enabled','ac_post_enabled','four_levels_valid','tail_lock','eye_margin','aggregate_BER','ber_upper_95','checker_lag_ui','leveling_scale'});
+t=array2table(rows,'VariableNames',{'cornerRelNyq','modeIndex','ac_pre_enabled','ac_post_enabled','four_levels_valid','tail_lock','measurement_valid','eye_margin','errors','measured_bits','aggregate_BER','ber_upper_95','checker_lag_ui','leveling_scale','first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','tail_lock_losses','tail_cycle_slips','tail_level_valid'});
 t.mode=strings(height(t),1); for q=1:height(t), t.mode(q)=modes{t.modeIndex(q)}; end; t.modeIndex=[]; t.model_selected_assumption=repmat("AC corner/mode selected by bounded sweep; paper value undisclosed",height(t),1);
 t=movevars(t,'mode','Before','cornerRelNyq'); writetable(t,fullfile(resultRoot,'ac_solution.csv'));
 eligible=t.four_levels_valid&t.tail_lock&isfinite(t.eye_margin)&t.eye_margin>0;
@@ -149,7 +161,7 @@ p=D2DPHY('vlsi2024_xsr',cfg.phy.nLane); p.configure(cfg); r.result=p.run(); r.mo
 end
 
 function upper=binomialUpper95(errors,measured)
-if measured<=0, upper=NaN; elseif errors<=0, upper=3/measured; elseif errors>=measured, upper=1; else, upper=betaincinv(0.95,errors+1,measured-errors); end
+if ~isfinite(errors)||~isfinite(measured)||measured<=0, upper=NaN; elseif errors<=0, upper=3/measured; elseif errors>=measured, upper=1; else, upper=betaincinv(0.95,errors+1,measured-errors); end
 end
 
 function ensureDir(path)

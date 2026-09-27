@@ -34,14 +34,14 @@ assert(ideal.link.snr_dB==inf && ideal.link.rjUI_rms==0 && ideal.channel.lossNyq
 [a,cfgA]=run_vlsi2024_xsr('baseline',256);
 assert(strcmp(a.mode,'baseline') && strcmp(a.resultRoot,fullfile(root,'results','vlsi2024_xsr')));
 assert(cfgA.link.nBits==256 && cfgA.phy.nLane==8);
-assert(numel(a.result.errCnt)==8 && all(isfinite(a.metrics.empirical_BER)));
+assert(numel(a.result.errCnt)==8 && all(isnan(a.metrics.empirical_BER)) && ~a.result.measurement.continuousTailLock);
 assert(isfield(cfgA.model,'appliedFfe') && isfield(cfgA.model,'appliedDac'));
 assert(isfield(a.probes,'dataSamples') && isfield(a.probes,'edgeSamples') && isfield(a.probes,'spareSamples'));
 assert(isfield(a.probes,'levelShiftCodes') && isfield(a.probes,'comparatorThresholds'));
 assert(isfield(a.probes,'levelShiftedSamples') && isfield(a.probes,'quarterRateSamples'));
 load(fullfile(a.resultRoot,'baseline_probes.mat'),'probes');
 assert(isfield(probes,'dataSamples') && isfield(probes,'edgeSamples') && isfield(probes,'spareSamples'));
-assert(all(a.metrics.measured_bits>0) && all(isfinite(a.metrics.errors)));
+assert(all(a.metrics.measured_bits==0) && all(isnan(a.metrics.errors)));
 required={"config.json","assumptions.md","baseline_metrics.csv","baseline_probes.mat"};
 for k=1:numel(required), assert(isfile(fullfile(a.resultRoot,required{k}))); end
 assert(isfile(fullfile(root,'results','summary.csv')));
@@ -55,7 +55,7 @@ assert(contains(text,'No real S-parameters'));
 [b,~]=run_vlsi2024_xsr('debug_1lane',256);
 assert(numel(b.result.errCnt)==1 && b.cfg.phy.nLane==1);
 [a2,~]=run_vlsi2024_xsr('baseline',256);
-assert(isequal(a.metrics.errors,a2.metrics.errors) && isequal(a.metrics.measured_bits,a2.metrics.measured_bits));
-assert(isequal(a.metrics.empirical_BER,a2.metrics.empirical_BER));
+assert(isequaln(a.metrics.errors,a2.metrics.errors) && isequal(a.metrics.measured_bits,a2.metrics.measured_bits));
+assert(isequaln(a.metrics.empirical_BER,a2.metrics.empirical_BER));
 disp('VLSI2024 profile and runner tests OK');
 end

@@ -49,7 +49,12 @@ classdef Slicer < Blk
                 if isfield(r,'quarterRateBranches'), obj.quarterRateBranches=r.quarterRateBranches; end
                 if isfield(r,'roleCounts'), obj.samplerRoleCounts=r.roleCounts; end
                 if isfield(r,'levelShiftCodes'), obj.levelShiftCodes=r.levelShiftCodes; end
-                if isfield(r,'thresholdAssumptions'), obj.comparatorThresholds=r.thresholdAssumptions; end
+                if isfield(r,'thresholdAssumptions')
+                    if strcmpi(char(obj.modulation),'PAM4') && ~isequal(r.thresholdAssumptions(:),dspPam4Contract().thresholds(:))
+                        error('Slicer:ThresholdContract','PAM4 thresholdAssumptions must equal dspPam4Contract thresholds.');
+                    end
+                    obj.comparatorThresholds=r.thresholdAssumptions;
+                end
                 if isfield(r,'samplerOffsetCodes'), obj.samplerOffsetCodes=r.samplerOffsetCodes; end
             end
             if isfield(c,'phase'), obj.phase=c.phase; else, obj.phase=floor(c.sps/2); end
@@ -103,7 +108,8 @@ if isempty(thresholds), bits=dspSlice(y,modulation); return; end
 switch upper(char(modulation))
     case 'PAM4'
         if numel(thresholds)~=3, error('Slicer:Thresholds','PAM4 requires three comparator thresholds.'); end
-        c=dspPam4Contract(); idx=1+sum(y(:)>=thresholds(:).',2); bits=reshape(c.bitPairs(idx,:).',[],1);
+        c=dspPam4Contract(); if ~isequal(thresholds(:),c.thresholds(:)), error('Slicer:ThresholdContract','PAM4 thresholds must equal dspPam4Contract thresholds.'); end
+        idx=1+sum(y(:)>=c.thresholds(:).',2); bits=reshape(c.bitPairs(idx,:).',[],1);
     case 'NRZ'
         bits=double(y>=thresholds(1));
     otherwise

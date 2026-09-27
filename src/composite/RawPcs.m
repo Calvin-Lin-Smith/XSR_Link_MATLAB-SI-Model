@@ -74,6 +74,9 @@ end
 function [err,nMeasured,ber,meta]=paperCheck(obj,rxBits,skipUI,options)
 bps=1+strcmpi(obj.modulation,'PAM4'); maxLagUI=getField(options,'maxLagUI',4);
 syncLength=getField(options,'syncBits',128); explicitStart=getField(options,'measurementStartBits',[]);
+measurementStartUI=getField(options,'measurementStartUI',skipUI); tailValid=getField(options,'tailValid',true);
+if ~isfinite(measurementStartUI), comparisonStartUI=skipUI; else, comparisonStartUI=measurementStartUI; end
+skipUI=comparisonStartUI;
 validateattributes(maxLagUI,{'numeric'},{'scalar','integer','nonnegative'});
 validateattributes(syncLength,{'numeric'},{'scalar','integer','nonnegative'});
 if ~isempty(explicitStart), validateattributes(explicitStart,{'numeric'},{'scalar','integer','nonnegative'}); end
@@ -98,21 +101,24 @@ for lane=1:lanes
     bestErr=min(evenErr); bestIndex=find(evenErr==bestErr,1,'last'); bestLagBits=evenBits(bestIndex);
     oddCandidates=(-maxLagUI*bps):(maxLagUI*bps); oddCandidates=oddCandidates(mod(oddCandidates,bps)~=0); oddErr=inf(size(oddCandidates));
     for k=1:numel(oddCandidates), [oddErr(k),~]=windowErrors(rxBits(:,lane),ref(:,lane),syncStart,syncEnd,oddCandidates(k)); end
-    bestOdd=min(oddErr); oddAdvantage=max(2,ceil(0.1*max(syncEnd-syncStart+1,1)));
-    framingValid(lane)=isempty(oddErr) || ~(bestOdd<bestErr-oddAdvantage);
+    bestOdd=min(oddErr); syncErrors(lane)=bestErr; oddErrors(lane)=bestOdd;
+    framingValid(lane)=isempty(oddErr) || bestOdd>bestErr;
     if isfinite(bestErr) && framingValid(lane)
         [measureErr,measureCount]=windowErrors(rxBits(:,lane),ref(:,lane),measureStart,min(nRef,nRx),bestLagBits);
         if measureCount>0
             lagUI(lane)=bestLagBits/bps; syncBits(lane)=max(0,syncEnd-syncStart+1); measurementBits(lane)=measureCount;
             err(lane)=measureErr; nMeasured(lane)=measureCount; ber(lane)=measureErr/measureCount; alignmentValid(lane)=true;
-            syncErrors(lane)=bestErr; oddErrors(lane)=bestOdd; measurementStartBit(lane)=measureStart;
+            measurementStartBit(lane)=measureStart;
         end
     end
 end
 meta=struct('mode','paper_integer_ui','checkerLagUI',lagUI,'syncBits',syncBits,'measurementBits',measurementBits,...
     'alignmentValid',alignmentValid,'framingValid',framingValid,'syncErrors',syncErrors,'oddBitErrors',oddErrors,...
-    'measurementStartBit',measurementStartBit,'measurementStartUI',(measurementStartBit-1)/bps,...
-    'maxLagUI',maxLagUI,'bitsPerUI',bps,'referenceSource','RawPcs.referenceBits');
+    'measurementStartBit',measurementStartBit,'measurementStartUI',measurementStartUI,'measurementStartUIByLane',(measurementStartBit-1)/bps,...
+    'maxLagUI',maxLagUI,'bitsPerUI',bps,'referenceSource','RawPcs.referenceBits','tailValid',tailValid,...
+    'continuousTailLock',all(tailValid),'firstValidLockUI',getField(options,'firstValidLockUI',nan(1,obj.nLane)),...
+    'tailLockLosses',getField(options,'tailLockLosses',nan(1,obj.nLane)),'tailCycleSlips',getField(options,'tailCycleSlips',nan(1,obj.nLane)));
+if ~all(tailValid), alignmentValid(:)=false; err(:)=NaN; nMeasured(:)=0; ber(:)=NaN; meta.alignmentValid=alignmentValid; end
 end
 
 function [errors,count]=windowErrors(rx,ref,startIndex,endIndex,lagBits)
