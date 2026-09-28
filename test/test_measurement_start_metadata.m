@@ -6,6 +6,7 @@ required={'first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','t
 for k=1:numel(required), assert(ismember(required{k},m.Properties.VariableNames),required{k}); end
 assert(all(m.continuous_tail_lock)&&all(m.tail_lock_losses==0)&&all(m.tail_cycle_slips==0)&&all(m.tail_level_valid));
 assert(all(m.measurement_start_ui>=m.first_valid_lock_ui+o.cfg.model.debugStages.postLockWaitUI));
+assert(unique(m.measurement_start_ui)==max(m.first_valid_lock_ui)+o.cfg.model.debugStages.postLockWaitUI);
 assert(all(m.measured_bits>0));
 disp('Measurement first-lock metadata tests OK');
 end

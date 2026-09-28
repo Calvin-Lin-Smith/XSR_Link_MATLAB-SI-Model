@@ -15,7 +15,7 @@ samplerOffsetCodes=getField(options,'samplerOffsetCodes',0); minOccupancy=getFie
 minEyeMargin=getField(options,'minEyeMargin',0.08); levelingValid=logical(getField(options,'levelingValid',true));
 holdoverOnLock=logical(getField(options,'holdoverOnLock',isPam4));
 lockConfirmCount=getField(options,'lockConfirmCount',8); lossConfirmCount=getField(options,'lossConfirmCount',32);
-levelValidationWindow=getField(options,'levelValidationWindow',512);
+levelValidationWindow=getField(options,'levelValidationWindow',4096);
 piOptions=struct('nCodes',nCodes,'mismatchBoundLSB',getField(options,'mismatchBoundLSB',0),...
     'mismatchSeed',getField(options,'mismatchSeed',0));
 validateattributes(initialPhaseUI,{'numeric'},{'scalar','real','finite'});
