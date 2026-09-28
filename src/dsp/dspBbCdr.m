@@ -96,8 +96,13 @@ for k=1:nSym
         residualRecent=abs(residualPhaseUI(recent(transitionRecent))); phaseValues=piRawCodeTrace(stableRecent);
         if isempty(residualRecent), residualCriterion=0; else, sortedResidual=sort(residualRecent); residualCriterion=sortedResidual(max(1,ceil(0.9*numel(sortedResidual)))); end
         phaseSpan=max(phaseValues)-min(phaseValues);
-        candidate=sum(transitionRecent)>=minTransitions && residualCriterion<=lockTol && phaseSpan<=maxCodeSpan;
-        if isPam4, candidate=candidate && levelingValid && levelValid && eyeMargin>=minEyeMargin; end
+        timingCandidate=sum(transitionRecent)>=minTransitions && residualCriterion<=lockTol && phaseSpan<=maxCodeSpan;
+        candidate=timingCandidate;
+        if isPam4
+            acquireCandidate=timingCandidate&&levelingValid&&levelValid&&eyeMargin>=minEyeMargin;
+            holdCandidate=timingCandidate&&levelingValid&&levelValid;
+            candidate=acquireCandidate; if currentlyLocked, candidate=holdCandidate; end
+        end
         lockCandidateTrace(k)=candidate;
         wasLocked=currentlyLocked;
         if candidate
