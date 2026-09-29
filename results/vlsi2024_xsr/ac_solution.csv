@@ -1,16 +1,16 @@
-mode,cornerRelNyq,ac_pre_enabled,ac_post_enabled,four_levels_valid,tail_lock,eye_margin,aggregate_BER,ber_upper_95,checker_lag_ui,leveling_scale,model_selected_assumption
-pre-only,0.0001,1,0,1,1,0.979659505670338,0.00931486701801691,0.0106496677391935,1,1.96442849572536,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre-only,0.0003,1,0,1,1,1.01052625178306,0.0106017894349798,0.0120180456968668,1,1.96817051803464,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre-only,0.001,1,0,1,1,0.962863217370066,0.0264125505576664,0.0285716651490781,1,1.98128424110473,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre-only,0.003,1,0,1,1,0.867424576590324,0.450490196078431,0.456933146502538,0,2.00795861171067,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre-only,0.01,1,0,1,1,0.658734385173647,0.0862850839563672,0.0899860128317158,1,2.05039160201874,AC corner/mode selected by bounded sweep; paper value undisclosed
-post-only,0.0001,0,1,1,1,0.979132872425098,0.00159333251623974,0.00221016468374905,1,1.96336497989479,AC corner/mode selected by bounded sweep; paper value undisclosed
-post-only,0.0003,0,1,1,1,1.01033233367836,0.011949993871798,0.013446286460252,1,1.96779282901436,AC corner/mode selected by bounded sweep; paper value undisclosed
-post-only,0.001,0,1,1,1,0.962425268143747,0.0264125505576664,0.0285716651490781,1,1.98038307270941,AC corner/mode selected by bounded sweep; paper value undisclosed
-post-only,0.003,0,1,1,1,0.867421221899955,0.450490196078431,0.456933146502538,0,2.00795084610245,AC corner/mode selected by bounded sweep; paper value undisclosed
-post-only,0.01,0,1,1,1,0.658759445273232,0.0867140580953548,0.0904230526625273,1,2.05046960465362,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre+post,0.0001,1,1,1,1,1.13791030265425,0.00943743105772766,0.0107802289760193,1,1.96588893128023,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre+post,0.0003,1,1,1,1,0.988354015260455,0.0284348572128937,0.0306689965289395,1,1.97210498351279,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre+post,0.001,1,1,1,1,0.950162175741022,0.0406299791641132,0.0432641858685309,1,1.99631488604462,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre+post,0.003,1,1,1,1,0.613560160076328,0.451470588235294,0.457914652909014,0,2.01431839362093,AC corner/mode selected by bounded sweep; paper value undisclosed
-pre+post,0.01,1,1,1,1,0.503250118070526,0.481125137884545,0.487591497669688,-1,2.06868861843868,AC corner/mode selected by bounded sweep; paper value undisclosed
+mode,cornerRelNyq,ac_pre_enabled,ac_post_enabled,four_levels_valid,tail_lock,measurement_valid,eye_margin,errors,measured_bits,aggregate_BER,ber_upper_95,checker_lag_ui,leveling_scale,first_valid_lock_ui,measurement_start_ui,continuous_tail_lock,tail_lock_losses,tail_cycle_slips,tail_level_valid,model_selected_assumption
+pre-only,0.0001,1,0,1,1,1,1.45985659541919,0,8144,0,0.000368369351669941,1,1.96442849572536,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.0003,1,0,1,1,1,1.4630722187078,0,8144,0,0.000368369351669941,1,1.96817051803464,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.001,1,0,1,1,1,1.42954401901129,4,8144,0.000491159135559921,0.00112360303987843,1,1.98128424110473,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.003,1,0,1,1,1,1.31334923058373,29,8144,0.00356090373280943,0.00485208405108218,1,2.00795861171067,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre-only,0.01,1,0,1,1,1,0.989641145856865,156,8144,0.0191552062868369,0.0218466707307644,1,2.05039160201874,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.0001,0,1,1,1,1,1.45915791074618,0,8144,0,0.000368369351669941,1,1.96336497989479,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.0003,0,1,1,1,1,1.46279194021974,0,8144,0,0.000368369351669941,1,1.96779282901436,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.001,0,1,1,1,1,1.42889380443688,4,8144,0.000491159135559921,0.00112360303987843,1,1.98038307270941,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.003,0,1,1,1,1,1.3133441513179,29,8144,0.00356090373280943,0.00485208405108218,1,2.00795084610245,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+post-only,0.01,0,1,1,1,1,0.98982550096622,156,8144,0.0191552062868369,0.0218466707307644,1,2.05046960465362,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.0001,1,1,1,1,1,1.4608829988943,0,8144,0,0.000368369351669941,1,1.96588893128023,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.0003,1,1,1,1,1,1.44335899545588,3,8144,0.000368369351669941,0.000951791979690142,1,1.97210498351279,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.001,1,1,1,1,1,1.33105184166138,19,8144,0.00233300589390963,0.00342141931129464,1,1.99631488604462,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.003,1,1,1,1,1,1.10012829678937,114,8144,0.0139980353634578,0.0163349372839193,1,2.01431839362093,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed
+pre+post,0.01,1,1,1,1,1,0.658096628346524,492,8144,0.0604125736738703,0.064934305766063,1,2.06868861843868,4103,4119,1,0,0,1,AC corner/mode selected by bounded sweep; paper value undisclosed

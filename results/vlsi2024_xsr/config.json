@@ -264,7 +264,9 @@
     "checker": {
       "paper": true,
       "maxLagUI": 4,
-      "syncBits": 32
+      "syncBits": 32,
+      "postLockWaitUI": 16,
+      "minTailUI": 64
     },
     "enablePaperAdaptation": true,
     "trainingMode": "decision_directed",
@@ -333,7 +335,7 @@
         0.84,
         -0.08
       ],
-      "selectedObjective": 3.5272640864178575
+      "selectedObjective": 3.5554835930457234
     },
     "adaptationSampleBits": 16384,
     "staticSweepSampleBits": 16384
