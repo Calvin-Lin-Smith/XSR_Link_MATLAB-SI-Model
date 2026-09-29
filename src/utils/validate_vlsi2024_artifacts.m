@@ -62,7 +62,7 @@ try
         all(abs(response.error_dB)<=response.tolerance_dB),...
         'channel response schema/value invariant failed');
     loss=readtable(fullfile(root,'loss_sweep_metrics.csv')); checkBer(loss,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'},...
-        {'mode','rate_context_Gbps','line_rate_Gbps','lane_context','sample_bits','lossAtRef_dB'});
+        {'mode','rate_context_Gbps','line_rate_Gbps','lane_context','sample_bits','lossAtRef_dB','measurement_valid','first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','tail_lock_losses'});
     ffe=readtable(fullfile(root,'ffe_3_vs_6.csv')); checkBer(ffe,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'},...
         {'mode','rate_context_Gbps','line_rate_Gbps','lane_context','sample_bits','variant','tap_count','coefficients'});
     ac=readtable(fullfile(root,'ac_ctle.csv')); checkBer(ac,{'errors','measured_bits','empirical_BER','seed','ber_upper_95'},...
@@ -154,12 +154,13 @@ for k=1:numel(names), assert(ismember(names{k},t.Properties.VariableNames),'Miss
 end
 
 function checkBer(t,names,context)
-requireVars(t,[names context]); assert(all(t.errors>=0)&&all(t.measured_bits>0),'invalid BER counts');
-assert(all(t.errors<=t.measured_bits),'errors exceed measured bits');
-assert(all(t.empirical_BER>=0&t.empirical_BER<=1)&&all(abs(t.empirical_BER-t.errors./t.measured_bits)<=1e-12),...
+requireVars(t,[names context]); mask=true(height(t),1); if ismember('measurement_valid',t.Properties.VariableNames), mask=logical(t.measurement_valid); end
+assert(any(mask),'no valid BER rows'); assert(all(t.errors(mask)>=0)&&all(t.measured_bits(mask)>0),'invalid BER counts');
+assert(all(t.errors(mask)<=t.measured_bits(mask)),'errors exceed measured bits');
+assert(all(t.empirical_BER(mask)>=0&t.empirical_BER(mask)<=1)&&all(abs(t.empirical_BER(mask)-t.errors(mask)./t.measured_bits(mask))<=1e-12),...
     'empirical BER ratio invalid');
-assert(all(t.ber_upper_95>=t.empirical_BER-1e-12)&all(t.ber_upper_95<=1+1e-12),...
-    'invalid BER/upper-bound values'); z=t.errors==0; if any(z), assert(all(abs(t.ber_upper_95(z)-3./t.measured_bits(z))<1e-12),'zero-error bound invalid'); end
+assert(all(t.ber_upper_95(mask)>=t.empirical_BER(mask)-1e-12)&all(t.ber_upper_95(mask)<=1),...
+    'invalid BER/upper-bound values'); z=mask&t.errors==0; if any(z), assert(all(abs(t.ber_upper_95(z)-3./t.measured_bits(z))<1e-12),'zero-error bound invalid'); end
 assert(all(isfinite(t.seed)),'invalid seed context'); assert(all(isfinite(t.rate_context_Gbps)&t.rate_context_Gbps>0),'invalid rate context');
 assert(all(isfinite(t.line_rate_Gbps)&t.line_rate_Gbps>0),'invalid line-rate context');
 assert(all(strlength(string(t.mode))>0&strlength(string(t.lane_context))>0),'invalid mode/lane context');

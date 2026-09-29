@@ -23,7 +23,7 @@ switch mode
             'resultRoot',resultRoot,'probes',probes,'probeManifest',probeManifest);
     case 'loss_sweep'
         resultRoot=fullfile(root,cfg.model.resultRoot); ensureDir(resultRoot);
-        rows=zeros(numel(cfg.channel.lossSweep_dB),7); ilRows=zeros(numel(cfg.channel.lossSweep_dB),6);
+        rows=nan(numel(cfg.channel.lossSweep_dB),12); ilRows=zeros(numel(cfg.channel.lossSweep_dB),6);
         for k=1:numel(cfg.channel.lossSweep_dB)
             loss=cfg.channel.lossSweep_dB(k); cfgk=cfg;
             cfgk.channel.lossAtRef_dB=loss; cfgk.channel.lossNyq_dB=loss;
@@ -32,10 +32,13 @@ switch mode
                 'lossAtRef_dB',loss,'poles',cfg.channel.poles));
             if k==1, cfg=attachApplied(cfg,rk.model); end
             errors=sum(rk.result.errCnt); measuredBits=sum(rk.result.nMeasured);
-            rows(k,:)=[loss errors measuredBits errors/max(measuredBits,1) cfg.link.seed binomialUpper95(errors,measuredBits) cfg.paper.berRate_Gbps];
+            mm=getField(rk.result,'measurement',struct()); measurementValid=all(isfinite(rk.result.errCnt))&&all(isfinite(rk.result.ber))&&getField(mm,'continuousTailLock',false);
+            firstUi=getField(mm,'firstValidLockUI',NaN); if numel(firstUi)>1, firstUi=max(firstUi); end
+            startUi=getField(mm,'measurementStartUI',NaN); tailLoss=getField(mm,'tailLockLosses',NaN); if numel(tailLoss)>1, tailLoss=max(tailLoss); end
+            rows(k,:)=[loss errors measuredBits errors/max(measuredBits,1) cfg.link.seed binomialUpper95(errors,measuredBits) cfg.paper.berRate_Gbps measurementValid firstUi startUi getField(mm,'continuousTailLock',false) tailLoss];
             ilRows(k,:)=[loss measuredLoss cfg.channel.refFreq_GHz cfg.link.baud_GBd measuredLoss-loss 0.03];
         end
-        metrics=array2table(rows,'VariableNames',{'lossAtRef_dB','errors','measured_bits','empirical_BER','seed','ber_upper_95','rate_context_Gbps'});
+        metrics=array2table(rows,'VariableNames',{'lossAtRef_dB','errors','measured_bits','empirical_BER','seed','ber_upper_95','rate_context_Gbps','measurement_valid','first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','tail_lock_losses'});
         metrics.aggregateBer=metrics.empirical_BER;
         metrics.mode=repmat(string(cfg.link.modulation),height(metrics),1); metrics.line_rate_Gbps=repmat(cfg.link.lineRate_Gbps,height(metrics),1);
         metrics.lane_context=repmat("x8",height(metrics),1); metrics.sample_bits=repmat(cfg.link.nBits,height(metrics),1);
