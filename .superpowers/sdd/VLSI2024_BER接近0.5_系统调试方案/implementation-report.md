@@ -20,7 +20,8 @@
 - Fresh final verification: `run_all_tests()` `9/9`; `run_vlsi2024_regression('full')`
   `11/11` (`1257.1 s`); `validate_vlsi2024_artifacts` `ok=1 detail=OK`; AC table `15/15`
   valid and model-selected `0.01/pre-only` row BER `0.0191552063`, UCB95 `0.0218466707`.
-- Fix-wave child commits: `599cbd1`, `bdb09eb`, `cc87fa2`, `a797a50`; the final artifact/report
-  commit and child/parent push SHAs are appended to `task-1-5-report.md` after delivery.
-- Historical parent entries `2d2207b` and `d3687d4` are superseded records; do not interpret them
-  as the final fix-wave gitlink. The parent final commit is recorded in the appended delivery section.
+- Fix-wave child commits: `599cbd1`, `bdb09eb`, `cc87fa2`, `a797a50`, `09360b6`;
+  child push `f360814..09360b6 main -> main`.
+- Final fix-wave implementation pointer in the parent is `f3f0433`, pushed as
+  `d3687d4..f3f0433 main -> main`; the full staged-diff/status evidence is in
+  `task-1-5-report.md`. Historical parent entry `2d2207b` is superseded.

@@ -227,3 +227,15 @@
   bounded model-selected assumption，真实 S 参数/MIMO/晶体管级实现仍未建模。
 - Simulink parity focused gate 检查生成 paper model 的共享函数接线；完整 canonical 数值证据仍来自
   MATLAB paper path。shared MAT 和父仓无关 dirty 保留。
+
+### Delivery push addendum
+
+- Child push：`To https://github.com/Calvin-Lin-Smith/D2D_matlab_model.git`，
+  `f360814..09360b6  main -> main`。
+- Parent pre-addendum pointer commit：`f3f0433 Update D2D MATLAB model submodule`；
+  staged name-status 仅为 `M D2D_matlab_model`，submodule diff 为
+  `f360814 -> 09360b6`，父仓无关 `node_modules` 和 child shared MAT 未暂存。
+- Parent push：`To https://github.com/Calvin-Lin-Smith/Master_Record.git`，
+  `d3687d4..f3f0433  main -> main`。
+- 本次 addendum 只补写 push 证据；其 child commit 后的父仓 gitlink pointer-sync
+  是独立的 docs-only 提交，`f3f0433` 仍是本 fix wave implementation pointer。
