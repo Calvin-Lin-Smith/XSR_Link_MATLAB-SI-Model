@@ -287,8 +287,8 @@ run_vlsi2024_xsr('debug_link',nBits,'Config',requestedCfg) 的实际顺序是：
 3. 训练 stageTrace 的固定行顺序：startup_calibration、clock_training、sampler_calibration、ctle_training、ffe_training；
 4. 用 enabled stage 的结果构造 trainedCfg；禁用 stage 保留 requested 手动值；
 5. 重新运行 x8 final model，formal path 强制 useReferenceAlign=false；
-6. 读取每 lane cdrTrace.lockIndex；
-7. 计算 final measurement window；全部 lane lock 后用一个 global latest-lock post-lock window；
+6. 读取每 lane cdrTrace.firstValidLockIndex；
+7. 计算 final measurement window；取全部 lane 的 first valid lock 最大值，加 global postLockWaitUI guard；窗口内任一 lane unlock、level invalid 或 cycle slip 都使 measurement invalid，禁止 latest/reacquisition 重选；
 8. Final window 中对 rxBits 做 BER count，比较基准是 RawPcs 对象内部 referenceBits；D2DPHY.run 的早期检查也使用同一内部基准，referenceBits 从不参与 CDR/PI 相位更新。随后输出 performance 和 trainedParameters。
 
 debug link 内部将 stage.runTraining=true，所以五个训练 toggle 不由 model.enablePaperAdaptation 代替。model.enablePaperAdaptation 是单独的 background adaptation 配置；专用 adaptation mode 的 enablePaperAdaptation name/value 可显式控制它。
@@ -303,7 +303,7 @@ debug link 内部将 stage.runTraining=true，所以五个训练 toggle 不由 m
 | model.debugStages.ctleTraining | CTLE 网格候选与 applied boost | 128 UI | 保留 requested CTLE；无 candidate trace 时不附 candidate_4.13 行 |
 | model.debugStages.ffeTraining | 有限 3/6-tap signed candidate set | 128 UI | 保留 requested FFE mode/offset/coeff |
 | model.debugStages.cdrEnabled | 是否允许 decision-directed CDR | 无独立 budget | 与 cdrOptions.enabled 合取 |
-| model.debugStages.postLockWaitUI | latest-lock 后统一等待 | 16 UI | CDR off 时不额外形成 final BER |
+| model.debugStages.postLockWaitUI | max(firstValidLockUI) 后统一 guard 等待 | 16 UI | CDR off 时不额外形成 final BER |
 
 启用行的 stageTrace.status=executed、consumedUI=该预算；禁用行是 skipped_manual_value、consumedUI=0、evaluationCount=0。stageTrace 还给出 evaluationCount、cumulativeTrainingEndUI、totalTrainingBudgetUI、postLockWaitUI、cdrEnabled、paperPreset。
 
@@ -362,7 +362,7 @@ model.manualDelayUI
 
 当 CTLE trace 非空，最后附加 rxPma.lane.ctleBoost_dB[candidate_4.13]；candidate 行的 requested=4.13、candidate applied=4.2、candidate residual=0.07 只是 off-grid quantization evidence，不是最终 selected/trained/applied CTLE。最终值必须分别读取 trainedCfg.rxPma.lane.ctleBoost_dB、appliedCfg.rxPma.lane.ctleBoost_dB 和 final model 的 Afe.ctle.appliedBoost_dB。只有 adaptation mode（GUI Calibration / Adaptation 或 full regression 内部 adaptation）写 ctle_adaptation_trace.csv；debug_link 的 ctleTrace 只在内存，static_checkpoint 不写该文件。
 
-### 5.4 CDR lock 和 global latest-lock window
+### 5.4 CDR lock 和 global first-valid-lock window
 
 dspBbCdr 是 reference-free early/late decision-directed loop。每 UI 由 PI 得到 data/edge phase，在接收波形取 data/early/late sample，再由前一 decision 和 early-late metric 更新 code。dspPiClock 将 rawCode round 后 modulo nCodes，加 deterministic mismatch，再输出 phaseUI。
 
@@ -374,16 +374,16 @@ dspBbCdr 是 reference-free early/late decision-directed loop。每 UI 由 PI �
 
 默认后台值为 minTransitions=max(4,ceil(lockWindow/8))、maxCodeSpanCodes=8；它们不是 GUI 行。
 
-所有 lane lock 时：
+所有 lane 都出现 first valid lock 时：
 
 ~~~text
-latestLockUI = max(laneLockUI(laneLocked))
-berStartUI = max(originalSkipUI, latestLockUI + postLockWaitUI)
+firstValidLockUI = laneLockUI(firstValidLock)
+berStartUI = max(originalSkipUI, max(firstValidLockUI) + postLockWaitUI)
 measurementStartSample = measurementStartUI*sps + 1
 totalWaitedUI = totalTrainingBudgetUI + berStartUI
 ~~~
 
-这是一个 global latest-lock post-lock window：不能每 lane 用自己的 lockUI 得到不同的 performance 起点。CTLE waveform 从 measurementStartSample 一基下标裁剪；data/edge/spare/level-shifted samples 从 measurementStartUI 对应的 symbol 位置裁剪。eye height、sample-level distribution、ISI/margin 和 final BER 都只使用该窗口。完整 fullLockTrace、PI code、CDR error 可用于诊断，但 pre-lock 不属于 performance。
+这是一个 global first-valid-lock-plus-guard window：不能每 lane 用自己的 lockUI 得到不同的 performance 起点，也不能在 lock loss 后跳到 later/reacquisition window。measurementStartUI 由所有 lane firstValidLockUI 的最大值和 postLockWaitUI 唯一确定；从该点到 measurement end 任一 lane unlock、level invalid 或 cycle slip 都使整次 measurement invalid。CTLE waveform 从 measurementStartSample 一基下标裁剪；data/edge/spare/level-shifted samples 从 measurementStartUI 对应的 symbol 位置裁剪。eye height、sample-level distribution、ISI/margin 和 final BER 都只使用该连续窗口。完整 fullLockTrace、PI code、CDR error 可用于诊断，但 pre-lock 不属于 performance。
 
 ### 5.5 状态和 BER
 
@@ -879,7 +879,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；将 link.nBits 设 256、model.
 
 ### D9：postLock 与统一 measurement window
 
-目的：验证 latest lane lock 之后的全局等待和 measurementStartUI/sample。
+目的：验证所有 lane first valid lock 之后的全局 guard 和 measurementStartUI/sample。
 
 ~~~matlab
 root = 'E:\Master_Record\D2D_matlab_model';
@@ -900,7 +900,7 @@ for k = 1:numel(waitValues)
 end
 ~~~
 
-GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；分别把 model.debugStages.postLockWaitUI 设为 0 和 32；每次点击 Run x8 Link；查看 Metrics 的 Lock UI、BER start UI、Waited UI。预期 measurementStartUI 不小于 latestLockUI+postLockWaitUI 与 originalSkipUI，且所有 lane 的 start 相同。查看 measurementStartUI、measurementStartSample、berStartUIInFinalPass、totalWaitedUI、Debug.performance.lane。post-lock wait 不等同于真实 CDR settling time 的定量复现。
+GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；分别把 model.debugStages.postLockWaitUI 设为 0 和 32；每次点击 Run x8 Link；查看 Metrics 的 Lock UI、BER start UI、Waited UI。预期 measurementStartUI 不小于 max(firstValidLockUI)+postLockWaitUI 与 originalSkipUI，且所有 lane 的 start 相同；起点后的 unlock/level-invalid/cycle-slip 使 measurement invalid，不改选 later lock。查看 measurementStartUI、measurementStartSample、berStartUIInFinalPass、totalWaitedUI、Debug.performance.lane。post-lock wait 不等同于真实 CDR settling time 的定量复现。
 
 ### D10：training toggles 与 manual retention
 
@@ -1095,7 +1095,7 @@ disp(readtable(fullfile(resultRoot,'regression_summary.csv')));
 
 - [ ] formal baseline/debug link 为 useReferenceAlign=false、trainingMode=decision_directed。
 - [ ] final BER 仅从 berStartUI/measurementStartSample 起算。
-- [ ] latest-lock global post-lock 起点对所有 lane 相同。
+- [ ] first-valid-lock + postLockWaitUI global 起点对所有 lane 相同；起点后的 unlock/invalid/slip 使 measurement invalid。
 - [ ] no-lock、insufficient bits、no-CDR 都将 BER 标为 invalid，而不是 0。
 - [ ] pre-lock trace 可诊断但不进入 eye/BER/performance。
 

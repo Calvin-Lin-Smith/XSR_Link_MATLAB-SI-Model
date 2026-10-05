@@ -7,7 +7,7 @@ cleanup=onCleanup(@()cleanupModel(name,path)); buildD2DSimulinkModel('ModelName'
 load_system(path); tx=find_system(name,'LookUnderMasks','all','FollowLinks','on','RegExp','on','Name','DAC.*Driver');
 level=find_system(name,'LookUnderMasks','all','FollowLinks','on','RegExp','on','Name','PAM4.*Leveling'); cdr=find_system(name,'LookUnderMasks','all','FollowLinks','on','RegExp','on','Name','BB.*CDR.*PI.*Adaptation');
 assert(~isempty(tx)&&~isempty(level)&&~isempty(cdr)); assert(contains(get_param(tx{1},'MATLABFcn'),'dspPaperDriver'));
-assert(contains(get_param(level{1},'MATLABFcn'),'dspPam4Leveling')); assert(contains(get_param(cdr{1},'MATLABFcn'),'dspBbCdr'));
+assert(contains(get_param(level{1},'MATLABFcn'),'dspPam4Leveling')); assert(contains(get_param(cdr{1},'MATLABFcn'),'dspPaperCdr'));
 disp('Simulink paper parity tests OK');
 end
 

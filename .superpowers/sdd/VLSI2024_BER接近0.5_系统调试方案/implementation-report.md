@@ -25,3 +25,15 @@
 - Final fix-wave implementation pointer in the parent is `f3f0433`, pushed as
   `d3687d4..f3f0433 main -> main`; the full staged-diff/status evidence is in
   `task-1-5-report.md`. Historical parent entry `2d2207b` is superseded.
+
+## Scoped re-review fix round
+
+- Added `dspPaperCdr` validity wrapper and Simulink negative parity test; invalid/nonfinite/non-affine
+  PAM4 leveling cannot reach a valid CDR lock.
+- Updated active documentation to the first-valid-lock-plus-guard-only measurement contract and made
+  AC selector/validator reject hidden invalid rows. Focused suite and artifact validator are green;
+  canonical artifacts/schema and selector result were unchanged, so no second full regression was run.
+- Verified implementation/artifact anchor before this round: `37113df`; this round's single
+  implementation/docs/test commit intentionally does not self-embed its own SHA. There is no
+  report-only commit. Final child and parent gitlink SHA/push output are reported from actual
+  `origin/main` in the delivery response.

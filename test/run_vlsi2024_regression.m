@@ -117,7 +117,7 @@ end
 t=array2table(rows,'VariableNames',{'cornerRelNyq','modeIndex','ac_pre_enabled','ac_post_enabled','four_levels_valid','tail_lock','measurement_valid','eye_margin','errors','measured_bits','aggregate_BER','ber_upper_95','checker_lag_ui','leveling_scale','first_valid_lock_ui','measurement_start_ui','continuous_tail_lock','tail_lock_losses','tail_cycle_slips','tail_level_valid'});
 t.mode=strings(height(t),1); for q=1:height(t), t.mode(q)=modes{t.modeIndex(q)}; end; t.modeIndex=[]; t.model_selected_assumption=repmat("AC corner/mode selected by bounded sweep; paper value undisclosed",height(t),1);
 t=movevars(t,'mode','Before','cornerRelNyq'); writetable(t,fullfile(resultRoot,'ac_solution.csv'));
-eligible=t.four_levels_valid&t.tail_lock&isfinite(t.eye_margin)&t.eye_margin>0;
+eligible=t.measurement_valid&t.four_levels_valid&t.tail_lock&isfinite(t.eye_margin)&t.eye_margin>0;
 assert(any(eligible),'AC sweep found no four-level tail-locked positive-eye candidate.'); candidates=t(eligible,:);
 % Prefer the highest interpretable corner, then the lowest finite BER at that corner.
 maxCorner=max(candidates.cornerRelNyq); same=candidates(candidates.cornerRelNyq==maxCorner,:); [~,pick]=min(same.aggregate_BER); selected=same(pick,:);

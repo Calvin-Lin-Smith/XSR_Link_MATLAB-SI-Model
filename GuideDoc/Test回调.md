@@ -45,7 +45,7 @@ runLink 把参数表作为 requested cfg，调用 run_vlsi2024_xsr('debug_link',
 5. ffe_training：signed 3/6-tap 候选；
 6. 依据 model.debugStages.cdrEnabled 与 model.cdrOptions.enabled 的合取决定 CDR；
 7. final x8 decision-directed CDR run；
-8. 各 lane lock 后进入一个全局 latest-lock post-lock measurement window。
+8. 各 lane 首次有效 lock 后，取全局 first-valid-lock 加 postLockWaitUI 的 measurement window；窗口内任一 lane unlock、level invalid 或 cycle slip 都使 measurement invalid，不重选 later lock。
 
 stageTrace 是表格，列为 stage、status、enabled、trainingBudgetUI、consumedUI、evaluationCount、cumulativeTrainingEndUI、totalTrainingBudgetUI、postLockWaitUI、cdrEnabled、paperPreset。启用的 stage 为 executed，consumedUI 等于其配置预算；禁用的 stage 为 skipped_manual_value，consumedUI 和 evaluationCount 为 0。训练预算是离线候选/校准预算，不是 final pass 已发送的数据量。
 
@@ -55,8 +55,8 @@ stageTrace 是表格，列为 stage、status、enabled、trainingBudgetUI、cons
 
 1. 每个 lane 的 RxLane 通过 dspBbCdr，只看接收波形和此前的 data decision；dspBbCdr/dspPiClock 的相位更新从不读取 referenceBits。
 2. lockIndex 来自 dspBbCdr：最近 lockWindow 个 UI 至少有 minTransitions 个转换，transition residual 不超过 lockToleranceUI，PI code span 不超过 maxCodeSpanCodes。
-3. 所有 lane 锁定时，latestLockUI = max(laneLockUI(laneLocked))。
-4. final BER 起点为 berStartUI = max(originalSkipUI, latestLockUI + postLockWaitUI)；这就是最新锁定 lane 之后的一个全局等待窗口，不是每 lane 各自裁剪。每次 D2DPHY.run 内部先调用 RawPcs.check(rxBits,skipUI)，该方法将 rxBits 与对象内部 referenceBits 比较；debug_link 再用 berStartUI 调用同一个 checker 重算 final Result。
+3. 所有 lane 都出现 first valid lock 时，firstValidLockUI = laneLockUI(firstValidLock)，并取全局 firstValidLockUI 的最大值。
+4. final BER 起点为 berStartUI = max(originalSkipUI, max(firstValidLockUI) + postLockWaitUI)；这是首次有效锁后的全局 guard，不是每 lane 各自裁剪。该点之后任一 lane unlock、level invalid 或 cycle slip 都使 measurement invalid，禁止跳到 later lock/reacquisition。每次 D2DPHY.run 内部先调用 RawPcs.check(rxBits,skipUI)，该方法将 rxBits 与对象内部 referenceBits 比较；debug_link 再用 berStartUI 调用同一个 checker 重算 final Result。
 5. 样本下标采用 MATLAB 一基编号：measurementStartSample = measurementStartUI*sps + 1。data/edge/spare/level-shifted sample 从同一 UI 边界裁剪；CTLE 波形从该 sample 裁剪。
 6. eye height、sample-level distribution、ISI/margin、BER 全部只由此窗口计算。完整 acquisition、CDR lock、PI trace 可用于诊断，但 pre-lock 数据不能进入性能结论。
 

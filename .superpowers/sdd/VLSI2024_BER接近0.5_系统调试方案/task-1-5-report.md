@@ -239,3 +239,51 @@
   `d3687d4..f3f0433  main -> main`。
 - 本次 addendum 只补写 push 证据；其 child commit 后的父仓 gitlink pointer-sync
   是独立的 docs-only 提交，`f3f0433` 仍是本 fix wave implementation pointer。
+
+## Scoped re-review fix round（2026-09-08）
+
+`final-rereview.md` 的 1 个 P1 与 3 个 P2 逐项按 focused RED/GREEN 收尾；本轮没有
+重跑 canonical，因为 AC artifact/schema 未变化、15/15 行本来就是 measurement-valid，
+selector 的结果仍为 `0.01/pre-only`。
+
+### P1：Simulink leveling validity propagation
+
+- RED：`matlab -batch "addpath(genpath(pwd)); try, test_simulink_leveling_validity; exit(0); catch ME, fprintf(2,'RED_SIMULINK_VALIDITY: %s\\n',ME.message); exit(1); end"`；退出码 `1`，生成模型缺少 validity wrapper，旧 direct CDR 调用会把非仿射 `[-3,-1,1,5]` 输入当作 `cdrLevels=1,current=1`。
+- GREEN：`matlab -batch "addpath(genpath(pwd)); test_simulink_leveling_validity; test_simulink_paper_parity"`；输出 `Simulink leveling-validity tests OK`、`Simulink paper parity tests OK`。新增共享 `dspPaperCdr` wrapper：调用 `dspPam4Leveling`，把 `levelsValid`/`levelingMeta` 传入 `dspBbCdr` 的 `levelingValid` gate；invalid/nonfinite/non-affine 时输出 invalid bits、锁定状态为 false。生成 paper path 的 CDR block 改用 wrapper，并从 AC-post raw branch 进入，避免丢弃 leveler metadata。
+
+### P2：文档 first-valid-lock 规范
+
+- RED：`matlab -batch "addpath(genpath(pwd)); try, test_first_lock_docs; exit(0); catch ME, fprintf(2,'RED_FIRST_LOCK_DOCS: %s\\n',ME.message); exit(1); end"`；输出 `RED_FIRST_LOCK_DOCS: Active docs still describe latest-lock/reacquisition measurement.`。
+- GREEN：`matlab -batch "addpath(genpath(pwd)); test_first_lock_docs"`；输出 `First-lock documentation tests OK`。README、功能描述、Test 回调、工程学习、参数、完整复现指南及调试方案矩阵均改为 `max(firstValidLockUI)+postLockWaitUI` 的唯一 global 起点，并明确起点后 unlock/level-invalid/cycle-slip 使整次 measurement invalid、禁止 later/reacquisition 重选。
+
+### P2：AC selector/validator 不隐藏 invalid row
+
+- RED：`matlab -batch "addpath(genpath(pwd)); try, test_ac_selector_measurement_validity; exit(0); catch ME, fprintf(2,'RED_AC_SELECTOR: %s\\n',ME.message); exit(1); end"`；输出 `RED_AC_SELECTOR: AC selector does not gate eligibility on measurement_valid.`。
+- GREEN：`matlab -batch "addpath(genpath(pwd)); test_ac_selector_measurement_validity"`；输出 `AC selector measurement-validity tests OK`。`runAcSweep` 的 `eligible` 现在显式包含 `measurement_valid`；validator 要求 canonical 15 行全部 valid，并验证每一行具备 four-level/tail/eye 资格。tamper `measurement_valid=0` 的负测被拒绝。
+
+### Scoped focused verification
+
+最小覆盖命令：
+`matlab -batch "addpath(genpath(pwd)); test_simulink_leveling_validity; test_simulink_paper_parity; test_ac_selector_measurement_validity; test_first_lock_docs; test_vlsi2024_ac_solution; test_fix_artifact_validator; test_fix2_validator_contracts; test_fix4_contracts; [ok,detail]=validate_vlsi2024_artifacts(fullfile(pwd,'results','vlsi2024_xsr')); fprintf('SCOPED_VALIDATOR ok=%d detail=%s\\n',ok,detail); assert(ok)"`。
+输出：Simulink、AC selector、文档、AC solution、Round 2/Round 4 negative tests 全部 OK；
+`SCOPED_VALIDATOR ok=1 detail=OK`、`SCOPED_FINAL_GREEN PASS`。
+
+本轮不重跑 `run_all_tests()`：生产逻辑仅新增 formal Simulink wrapper、AC selector/validator gate，
+不进入 legacy `run_all_tests()` 路径；上一 fresh green 为 child `37113df`（`run_all_tests()` 9/9，
+canonical 11/11，artifact validator OK），本轮已用上述 focused coverage 与 validator 复核。canonical
+artifact 未重写，故保留同一 BER/first-lock/tail/AC 证据。
+
+### SHA 口径与收尾边界
+
+- Verified implementation/artifact anchor：`37113df`（已在 child `origin/main`，包含上一轮 fresh artifacts/report evidence）。
+- 本轮 verified implementation commit 将同时包含 wrapper、selector/validator、tests、active docs 与本报告追加；
+  SHA 不在自身正文中自引用，交付时以 `git rev-parse HEAD`/`origin/main` 为准。
+- Report-only commit：本轮无；scratch/fix report 不再为记录 SHA 单独制造 commit。
+- Parent gitlink commit：child push 后由父仓仅更新 `D2D_matlab_model`，实际 SHA 与普通 push 输出在最终交付文字中记录；
+  父仓 node_modules 和 child `simulink/d2d_shared_config.mat` 保持 dirty、未暂存。
+
+### Scoped fix concerns
+
+- 这轮 focused Simulink gate 验证 wrapper 的 invalid propagation 和生成 block 接线；canonical 数值 artifact 仍来自 MATLAB paper path，
+  未因未变化的 selector/schema 重跑 20 分钟 full regression。
+- BER/UCB 仍是有限样本 behavioral evidence，不是 silicon/package sign-off；本轮未改变既有 first-lock/tail 结果。

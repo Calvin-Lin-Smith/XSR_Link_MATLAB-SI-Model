@@ -319,7 +319,7 @@ Validator必须保存并检查：mapping=`gray_00_01_11_10`、logical outer leve
 | CDR lock | 四电平valid + tail lock + slip统计 | 二电平假锁、历史lockIndex假阳性 | occupancy/currentLock/lossCount |
 | RX bits → checker | bounded integer UI同步后冻结lag | PRBS错位造成BER≈0.5 | sync lag与独立measurement BER |
 | CTLE/FFE training | 每个candidate重新leveling并要求四电平 | 二电平margin成为最优 | candidate validity/objective trace |
-| BER/eye窗口 | latest-lock后的统一x8窗口 | pre-lock样本污染性能 | measurementStartUI/sample |
+| BER/eye窗口 | first-valid-lock 后加 guard 的统一 x8 窗口；后续 unlock/invalid/slip 使 measurement invalid | pre-lock 样本污染性能或 latest/reacquisition 重选窗口 | measurementStartUI/sample |
 | regression | Gray/scale/levels/lock/lag/BER分别设gate | 流程跑通但BER≈0.5仍PASS | 分项summary和negative test |
 | artifacts | 旧natural mapping artifacts全部重建 | 新代码配旧CSV/MAT | mapping/version字段 + validator |
 | GUI | 不提供mapping切换；显示Gray contract和raw/logical probes | 用户选出第二套映射 | VLSI presets与parameter report |

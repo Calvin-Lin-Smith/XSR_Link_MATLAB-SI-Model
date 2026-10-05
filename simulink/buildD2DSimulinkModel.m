@@ -189,11 +189,10 @@ for k=1:numel(blocks)
     add_line(path,last,[safe '/1'],'autorouting','on'); last=[safe '/1'];
 end
 if strcmp(direction,'rx') && paperExecutable
-    levelBlock=matlab.lang.makeValidName('PAM4 Blind Leveling');
     boundary=[path '/BB-CDR PI Adaptation'];
     add_block('simulink/User-Defined Functions/Interpreted MATLAB Function',boundary,'Position',[80 230 300 285],...
-        'MATLABFcn','dspBbCdr(u,d2dCfg.link.modulation,d2dCfg.link.sps,d2dCfg.model.cdrOptions)');
-    add_line(path,[levelBlock '/1'],'BB-CDR PI Adaptation/1','autorouting','on');
+        'MATLABFcn','dspPaperCdr(u,d2dCfg.link.modulation,d2dCfg.link.sps,d2dCfg.model.cdrOptions)');
+    add_line(path,[matlab.lang.makeValidName('AC post') '/1'],'BB-CDR PI Adaptation/1','autorouting','on');
     add_line(path,'BB-CDR PI Adaptation/1','Out1/1','autorouting','on');
     probeSource='BB-CDR PI Adaptation/1';
 elseif strcmp(direction,'rx')

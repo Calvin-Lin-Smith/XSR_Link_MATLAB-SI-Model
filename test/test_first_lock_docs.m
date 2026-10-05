@@ -1,0 +1,16 @@
+function test_first_lock_docs()
+%TEST_FIRST_LOCK_DOCS Active docs use the accepted first-lock-only measurement contract.
+root=fileparts(fileparts(mfilename('fullpath')));
+paths={fullfile(root,'README.md'),fullfile(root,'GuideDoc','功能描述.md'),...
+    fullfile(root,'GuideDoc','Test回调.md'),fullfile(root,'GuideDoc','工程学习.md'),...
+    fullfile(root,'GuideDoc','参数.md'),fullfile(root,'GuideDoc','VLSI2024_XSR_SerDes_完整复现与演示指南.md'),...
+    fullfile(root,'GuideDoc','VLSI2024_BER接近0.5_系统调试方案.md')};
+allText='';
+for k=1:numel(paths), allText=[allText lower(fileread(paths{k}))]; %#ok<AGROW>
+end
+assert(~contains(allText,'latestlock') && ~contains(allText,'latest-lock') && ~contains(allText,'latest lock'),...
+    'Active docs still describe latest-lock/reacquisition measurement.');
+assert(contains(allText,'firstvalidlockui') && contains(allText,'postlockwaitui') && contains(allText,'continuous'),...
+    'Active docs omit first-lock guard/tail invalidation semantics.');
+disp('First-lock documentation tests OK');
+end
