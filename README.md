@@ -9,7 +9,7 @@
 要求 MATLAB R2024b；打开或生成 Simulink 模型还需要 Simulink license。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));

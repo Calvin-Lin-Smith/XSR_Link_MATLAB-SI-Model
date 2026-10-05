@@ -7,7 +7,7 @@ Simulink 路径是独立的可视化 block diagram；MATLAB src/dsp 与 class mo
 需要 MATLAB R2024b 和 Simulink license。当前入口是 buildD2DSimulinkModel(varargin)：
 
 ~~~matlab
-cd('E:\Master_Record\D2D_matlab_model');
+cd('E:\Master_Record\XSR_Link_MATLAB-SI-Model');
 addpath(genpath('src'));
 addpath('simulink');
 cfg = phyConfig('vlsi2024_xsr_typical');
@@ -73,7 +73,7 @@ GUI 侧只有 Apply + Sync 会调用无 modelName 参数的 syncD2DConfig，目�
 优先使用显式临时名称、路径和 Overwrite=false：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cfg = phyConfig('vlsi2024_xsr_typical');
 mdl = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
     'ModelPath',fullfile(root,'simulink','stage_h_tmp.slx'), ...

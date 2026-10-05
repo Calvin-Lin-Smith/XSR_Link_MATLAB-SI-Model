@@ -19,13 +19,13 @@
 
 - MATLAB R2024b；core DSP 和 MATLAB class model 只需要 MATLAB。
 - 打开或生成 Simulink 模型需要 Simulink license。
-- Windows 命令示例以当前仓库根目录 E:\Master_Record\D2D_matlab_model 为准。
+- Windows 命令示例以当前仓库根目录 E:\Master_Record\XSR_Link_MATLAB-SI-Model 为准。
 - 不要把父仓 E:\Master_Record 的其他改动当作本子仓文件；论文结果和共享快照均是可写 artifact。
 
 ### 1.2 MATLAB 初始化
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -36,7 +36,7 @@ addpath(fullfile(root,'simulink'));
 首次先跑短的理想 core smoke：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -63,7 +63,7 @@ paperI = phyConfig('vlsi2024_xsr_ideal');   % VLSI Ideal
 ### 1.3 入口速查
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -144,7 +144,7 @@ legacy alignment 使用 dspAlign 穷举 delay 和 phase 并读取 txBits；forma
 ### 4.1 启动
 
 ~~~matlab
-cd('E:\Master_Record\D2D_matlab_model');
+cd('E:\Master_Record\XSR_Link_MATLAB-SI-Model');
 addpath(genpath(fullfile(pwd,'src')));
 addpath(fullfile(pwd,'test'));
 addpath(fullfile(pwd,'gui'));
@@ -401,7 +401,7 @@ totalWaitedUI = totalTrainingBudgetUI + berStartUI
 ### 6.1 Baseline
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -416,7 +416,7 @@ cfg.link.nBits = nBits;
 ### 6.2 Static checkpoints
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -430,7 +430,7 @@ disp(out.summary);
 输出 channel_il_at_28GHz.csv、channel_response.csv、channel_il.csv、loss_sweep_metrics.csv、ffe_3_vs_6.csv、ac_ctle.csv、static_regression_summary.csv。static_checkpoint 内部使用默认 paper runner 子调用；需要自定义 cfg 时分别调用：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -444,7 +444,7 @@ cfg.link.nBits = nBits;
 ### 6.3 Calibration / adaptation
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -457,7 +457,7 @@ cfg.link.nBits = nBits;
 adaptation runner 的有效训练样本为 min(cfg.link.nBits,2^14)，固定五状态 RESET、STARTUP_IMPEDANCE_CAL、CLOCK_CAL、INITIAL_EQ_TRAIN、MISSION_TRACK。objective 是 minimum adjacent decision-level margin；MISSION_TRACK 先引入 CTLE drift，再恢复训练后的控制。专用 adaptation mode 默认 enablePaperAdaptation=true；需要关闭行为时显式传 name/value：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -471,7 +471,7 @@ disp(out.stateTrace);
 ### 6.4 Full regression
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -484,7 +484,7 @@ out = run_vlsi2024_regression('full',nBits);
 为了先做 smoke，可用：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -499,7 +499,7 @@ full runner 顺序为 baseline → static_checkpoint → baseline restore → ad
 ### 6.5 T1–T9 兼容 CLI
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -521,7 +521,7 @@ Simulink 是独立框图路径，MATLAB class/DSP 仍是算法源。顶层结构
 buildD2DSimulinkModel 的当前签名和 name/value：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'simulink'));
@@ -551,7 +551,7 @@ mdl = buildD2DSimulinkModel( ...
 builder 会把 Config 放入 MATLAB base workspace 和模型 Model Workspace，即使 Save=false 也会改变当前会话的 base d2dCfg；它不自动写 d2d_shared_config.mat。要安全做临时模型：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'simulink'));
@@ -566,7 +566,7 @@ tmp = buildD2DSimulinkModel('ModelName','stage_h_tmp', ...
 ### 7.4 同步流程
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'simulink'));
@@ -667,7 +667,7 @@ empirical_BER = errors / measured_bits
 目的：在相同 paper schema 下隔离零损耗/零噪声参考和 nominal impairments。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -693,7 +693,7 @@ GUI 步骤：加入 src、test、gui 路径；执行 app = launchD2DWorkbench()�
 目的：验证 28 GHz 标定插损和不同 loss 请求下的模型趋势。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -714,7 +714,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 St
 目的：观察 tap count、offset 和 model-selected coefficients 的相对行为，避免把候选系数当作论文原始系数。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -745,7 +745,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；在 ffeMo
 目的：隔离 Driver 的 206-level logical PAM4 量化和 swing metadata；logical clipping bound 为 `logicalOuterLevel`，`targetSwing` 只记录 physical target。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -772,7 +772,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 enabl
 目的：分离 termination mode、CTLE 前 AC 和 CTLE 后 AC 的行为。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 cfg = phyConfig('vlsi2024_xsr_typical');
@@ -806,7 +806,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；依次改
 目的：展示 paper_grid 的 0.2 dB 网格，以及 4.13 仅是 candidate trace，不是最终选择值。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -832,7 +832,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；将 ctleB
 目的：确认 effective CDR 是 cdrEnabled 与 cdrOptions.enabled 的逻辑与，并区分 manual debug。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -859,7 +859,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；保持 VLSI Typical；分别编
 目的：用小样本和极大 lockWindow 明确制造“没有足够 UI 锁定”的 invalid_no_lock，而不是把 BER 当作 0。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -882,7 +882,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；将 link.nBits 设 256、model.
 目的：验证所有 lane first valid lock 之后的全局 guard 和 measurementStartUI/sample。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -914,7 +914,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；分别把
 下面 CLI 示例显式设置两项 runtime/backend 字段，GUI 步骤不要求用户输入不存在的字段。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -949,7 +949,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；每次只把 startupCalibration
 目的：观察 samplerOffsetCodes 如何进入 role probes，以及 samplerCalibration 如何归零。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -978,7 +978,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；先将 sa
 目的：在不把论文 194 fs 或 CEI mask 当作模型输出的前提下观察 RJ/DJ 进入 sampling/CDR trace。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -1001,7 +1001,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；修改 li
 目的：展示五状态 calibration/adaptation 的受扰与恢复，而不是以 BER 训练。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -1025,7 +1025,7 @@ GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 Ca
 目的：先观察 8 lane lock/统一 post-lock，再生成正式全量 artifacts。
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -1044,7 +1044,7 @@ disp(debugOut.trainedParameters);
 GUI 步骤：执行 app = launchD2DWorkbench()；选择 VLSI Typical；点击 Run x8 Link；在 Metrics 选择 Aggregate/Lane 1–8，确认所有 lane 使用同一 BER start UI；再点击 Full VLSI2024 Regression。命令行正式 full：
 
 ~~~matlab
-root = 'E:\Master_Record\D2D_matlab_model';
+root = 'E:\Master_Record\XSR_Link_MATLAB-SI-Model';
 cd(root);
 addpath(genpath(fullfile(root,'src')));
 addpath(fullfile(root,'test'));
@@ -1066,7 +1066,7 @@ disp(readtable(fullfile(resultRoot,'regression_summary.csv')));
 
 | 症状 | 检查 |
 |---|---|
-| Undefined function phyConfig/D2DPHY | 当前目录是否为 D2D_matlab_model；是否 addpath(genpath(src)) |
+| Undefined function phyConfig/D2DPHY | 当前目录是否为 XSR_Link_MATLAB-SI-Model；是否 addpath(genpath(src)) |
 | paper schema rejected | paper.id、preset、FFE offsets/coeffs 长度和 main offset 0、PAM4 三阈值 |
 | GUI edit 报 invalid paper control | 数值是否有限/整数；CTLE 是否 0–6；loss 是否非负；logical 是否 true/false；AC/DC 和 policy 是否为允许枚举 |
 | Run x8 Link 改了共享文件 | 检查是否误点 Apply + Sync；Run x8 Link 本身只调用 applyConfigTable(false) |
