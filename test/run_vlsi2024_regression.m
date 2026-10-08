@@ -18,7 +18,7 @@ contractPass=pam4ContractPass(base.cfg); grayPass=grayAdjacencyPass(); dacPass=d
 alignmentPass=checkerAlignmentPass(base); berPass=berSanityPass(base); schemaPass=false;
 stages=["pam4_contract_pass";"gray_adjacency_pass";"tx_dac_logical_scale_pass";"four_levels_valid";"tail_lock_pass";"checker_alignment_pass";"ber_sanity_pass";"artifact_schema_pass";"static_link";"adaptation";"legacy_t1_t9"];
 passes=[contractPass;grayPass;dacPass;levelsPass;tailPass;alignmentPass;berPass;schemaPass;staticPass;adaptationPass;legacyPass];
-details=["shared Gray PAM4 contract";"adjacent Gray codewords differ by one bit";"paper DAC remains in logical +/-3 units";"all lanes expose four valid levels";"all lanes currently locked in measurement tail";"bounded integer-UI checker alignment valid";"aggregate and lane BER below 0.25";"reopen and required labels";"reference-free static link and FFE/CTLE sweep";"bounded calibration/adaptation";"fresh T1-T9"];
+details=["shared Gray PAM4 contract";"adjacent Gray codewords differ by one bit";"paper DAC remains in logical +/-3 units";"all lanes expose four valid levels";"all lanes currently locked in measurement tail";"bounded integer-UI checker alignment valid";"BER below max(1e-4,3/N) (finite-sample behavioral gate)";"reopen and required labels";"reference-free static link and FFE/CTLE sweep";"bounded calibration/adaptation";"fresh T1-T9"];
 summary=table(stages,passes,details,...
     'VariableNames',{'stage','pass','detail'});
 writetable(summary,fullfile(resultRoot,'regression_summary.csv'));
@@ -42,7 +42,7 @@ function pass=baselineRunPass(base,resultRoot)
 measurement=getField(base.result,'measurement',struct()); locked=getField(measurement,'continuousTailLock',false);
 pass=base.cfg.model.useReferenceAlign==false && all(base.result.nMeasured>0) && all(base.result.errCnt>=0) &&...
     all(isfinite(base.result.ber)) && locked && all(getField(measurement,'tailLockLosses',1)==0) &&...
-    all(getField(measurement,'tailCycleSlips',1)==0) && base.result.aggregateBer<0.25;
+    all(getField(measurement,'tailCycleSlips',1)==0) && base.result.aggregateBer<max(1e-4,3/sum(base.result.nMeasured));
 end
 
 function pass=pam4ContractPass(cfg)
@@ -77,7 +77,9 @@ pass=isfield(base.result,'checker')&&all(base.result.checker.alignmentValid)&&al
 end
 
 function pass=berSanityPass(base)
-pass=isfinite(base.result.aggregateBer)&&base.result.aggregateBer<0.25&&all(base.result.ber<0.25)&&...
+% Small smoke runs need a count-resolution allowance, not a silicon BER claim.
+pass=isfinite(base.result.aggregateBer)&&base.result.aggregateBer<max(1e-4,3/sum(base.result.nMeasured))&&...
+    all(base.result.ber<max(1e-4,3./base.result.nMeasured))&&...
     getField(base.result.measurement,'continuousTailLock',false)&&all(base.result.nMeasured>0);
 end
 
@@ -119,12 +121,12 @@ t.mode=strings(height(t),1); for q=1:height(t), t.mode(q)=modes{t.modeIndex(q)};
 t=movevars(t,'mode','Before','cornerRelNyq'); writetable(t,fullfile(resultRoot,'ac_solution.csv'));
 eligible=t.measurement_valid&t.four_levels_valid&t.tail_lock&isfinite(t.eye_margin)&t.eye_margin>0;
 assert(any(eligible),'AC sweep found no four-level tail-locked positive-eye candidate.'); candidates=t(eligible,:);
-% Prefer the highest interpretable corner, then the lowest finite BER at that corner.
-maxCorner=max(candidates.cornerRelNyq); same=candidates(candidates.cornerRelNyq==maxCorner,:); [~,pick]=min(same.aggregate_BER); selected=same(pick,:);
+% Keep the largest received eye; a high corner can lock despite baseline wander.
+[~,pick]=max(candidates.eye_margin); selected=candidates(pick,:);
 selectedCfg=cfg; selectedCfg.rxPma.lane.acPreCorner_UI=selected.cornerRelNyq; selectedCfg.rxPma.lane.acPostCorner_UI=selected.cornerRelNyq;
 selectedCfg.rxPma.lane.enableAcPre=logical(selected.ac_pre_enabled); selectedCfg.rxPma.lane.enableAcPost=logical(selected.ac_post_enabled);
 selectedCfg.rxPma.lane.acSelectedCorner_UI=selected.cornerRelNyq; selectedCfg.rxPma.lane.acSelectedMode='model-selected assumption';
-selectedCfg.rxPma.lane.acSelectionBasis='bounded cornerRelNyq sweep; four levels, tail lock, positive eye margin';
+selectedCfg.rxPma.lane.acSelectionBasis='bounded cycles/UI sweep; maximize valid received eye margin; no BER optimization';
 end
 
 function writeJitterTolerance(cfg,resultRoot,nBits)

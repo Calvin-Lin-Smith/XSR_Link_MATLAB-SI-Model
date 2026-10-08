@@ -62,9 +62,10 @@ switch profile
         cfg.channel.lossAtRef_dB=8; cfg.channel.lossNyq_dB=8;
         cfg.channel.lossSweep_dB=[0.5 2 4 6 8 10];
         cfg.rxPma.lane.terminationMode='AC'; cfg.rxPma.lane.enableAcPre=true; cfg.rxPma.lane.enableAcPost=false;
-        cfg.rxPma.lane.acPreCorner_UI=0.01; cfg.rxPma.lane.acPostCorner_UI=0.01;
-        cfg.rxPma.lane.acSelectedCorner_UI=0.01; cfg.rxPma.lane.acSelectedMode='model-selected assumption';
-        cfg.rxPma.lane.acSelectionBasis='bounded cornerRelNyq sweep; four levels, tail lock, positive eye margin';
+        % Undisclosed AC corner: received-eye sweep avoids PRBS31 baseline wander.
+        cfg.rxPma.lane.acPreCorner_UI=3e-4; cfg.rxPma.lane.acPostCorner_UI=3e-4;
+        cfg.rxPma.lane.acSelectedCorner_UI=3e-4; cfg.rxPma.lane.acSelectedMode='model-selected assumption';
+        cfg.rxPma.lane.acSelectionBasis='bounded cycles/UI sweep; maximize valid received eye margin; no BER optimization';
         cfg.rxPma.lane.acInitialState='steady_state'; cfg.rxPma.lane.enableAgc=false;
         cfg.rxPma.lane.ctlePolicy='paper_grid'; cfg.rxPma.lane.ctleBoost_dB=4;
         cfg.rxPma.lane.ctleGrid_dB=0:0.2:6; cfg.rxPma.lane.ctleAppliedBoost_dB=4;

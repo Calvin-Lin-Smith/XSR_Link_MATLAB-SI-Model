@@ -1,12 +1,12 @@
 stage,pass,detail
-pam4_contract_pass,1,shared Gray PAM4 contract
-gray_adjacency_pass,1,adjacent Gray codewords differ by one bit
-tx_dac_logical_scale_pass,1,paper DAC remains in logical +/-3 units
-four_levels_valid,1,all lanes expose four valid levels
-tail_lock_pass,1,all lanes currently locked in measurement tail
-checker_alignment_pass,1,bounded integer-UI checker alignment valid
-ber_sanity_pass,1,aggregate and lane BER below 0.25
-artifact_schema_pass,1,reopen and required labels
-static_link,1,reference-free static link and FFE/CTLE sweep
-adaptation,1,bounded calibration/adaptation
-legacy_t1_t9,1,fresh T1-T9
+pam4_contract_pass,1,"shared Gray PAM4 contract"
+gray_adjacency_pass,1,"adjacent Gray codewords differ by one bit"
+tx_dac_logical_scale_pass,1,"paper DAC remains in logical +/-3 units"
+four_levels_valid,1,"all lanes expose four valid levels"
+tail_lock_pass,1,"all lanes currently locked in measurement tail"
+checker_alignment_pass,1,"bounded integer-UI checker alignment valid"
+ber_sanity_pass,1,"BER below max(1e-4,3/N) (finite-sample behavioral gate)"
+artifact_schema_pass,1,"reopen and required labels"
+static_link,1,"reference-free static link and FFE/CTLE sweep"
+adaptation,1,"bounded calibration/adaptation"
+legacy_t1_t9,1,"fresh T1-T9"

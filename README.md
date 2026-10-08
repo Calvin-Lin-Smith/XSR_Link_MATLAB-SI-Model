@@ -4,6 +4,10 @@
 
 本项目是 architecture/trend reproduction，不是 3nm transistor、IBIS-AMI、真实 S 参数/MIMO、功耗模型或 silicon/sign-off。论文 <1e-12/<1e-14 BER、约 0.9 pJ/b、194 fs integrated jitter 和 COM 等只作为 paper context；模型结果必须带 seed、measured_bits 和 ber_upper_95。
 
+2026-10-08 BER 修正：原 AC 高通拐点 `0.01 cycles/UI`（562.5 MHz）导致 PRBS31 基线漂移；四电平有效、CDR 锁定仍不足以保证低 BER。Typical 默认改为 `3e-4 cycles/UI`（16.875 MHz），保留原 AC、FFE、CTLE、sampler 和 BB-CDR/PI 架构及全部噪声/抖动。full regression 的 AC 选择器改为最大化有效接收眼图裕量，不再优先选最高拐点，也不以 BER 训练。拐点仍是论文未披露的模型假设。相同 seed=202409 的单 lane 长测为 12/253904（BER=4.7262e-5）；这是有限样本结果。baseline 回归和 artifact validator 的 BER 门槛收紧为 `<max(1e-4,3/N)`：长样本采用 1e-4，短 smoke 使用计数分辨率容差；该门槛不是论文 BER 声明。
+
+本次保存的 canonical artifacts 为 `full,4096` smoke 回归；独立的 262144-bit 单 lane 长测、16384-bit x8 短测与修正前结果记录在 [ber_fix_verification.csv](results/vlsi2024_xsr/ber_fix_verification.csv)。AC 扫描采用最后滚动窗口的接收眼图裕量，属于有限候选/窗口选择，不代表全通道或 PVT 最坏条件验收。保存的共享 MAT 与 SLX 已同步；SLX 用既有 paper builder 重新导出，x8 顶层结构保持不变。
+
 ## 快速开始
 
 要求 MATLAB R2024b；打开或生成 Simulink 模型还需要 Simulink license。

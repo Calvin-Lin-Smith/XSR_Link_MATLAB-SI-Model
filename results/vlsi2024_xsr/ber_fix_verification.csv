@@ -1,0 +1,5 @@
+case,lane_count,sample_bits_per_lane,errors,measured_bits,empirical_BER,ber_upper_95,ac_corner_cycles_per_UI,seed,scope
+before_saved_x8_baseline,8,262144,35852.0,2031232.0,0.0176503717940639,0.0178030967782602,0.01,202409,saved pre-fix canonical snapshot
+before_same_input_1lane,1,16384,156,8144,0.019155206286836934,0.021846670730762238,0.01,202409,fresh pre-fix AC reproduction
+after_default_1lane_long,1,262144,12,253904,4.726195727519062e-05,7.657336778529786e-05,0.0003,202409,fresh one-lane run; other settings unchanged
+after_default_x8_smoke,8,16384,0,65152,0,4.604616895874263e-05,0.0003,202409,fresh default x8; each lane locked and zero errors

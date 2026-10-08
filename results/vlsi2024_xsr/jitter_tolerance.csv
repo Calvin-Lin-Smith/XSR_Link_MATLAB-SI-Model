@@ -1,7 +1,7 @@
 jitter_UI_rms,errors,measured_bits,empirical_BER,seed,ber_upper_95,sample_bits,sweep_context,mode,rate_context_Gbps,line_rate_Gbps,lane_context
-0,1068,65152,0.0163924361493124,202409,0.0172345130459438,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
-0.005,1087,65152,0.0166840618860511,202409,0.0175332505868163,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
-0.01,1121,65152,0.0172059184675835,202409,0.0180676720560327,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
-0.02,1150,65152,0.0176510314341847,202409,0.0185233442400692,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
-0.04,1214,65152,0.0186333497053045,202409,0.0195284784581991,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
-0.08,1513,65152,0.0232226178781925,202409,0.0242166982404056,16384,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0,0,16000,0,202409,0.0001875,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0.005,2,16000,0.000125,202409,0.000393434281595107,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0.01,1,16000,6.25e-05,202409,0.000296456846406116,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0.02,2,16000,0.000125,202409,0.000393434281595107,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0.04,4,16000,0.00025,202409,0.000572002809603864,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
+0.08,35,16000,0.0021875,202409,0.00289922457060069,4096,bounded x8 tolerance sweep; no silicon claim,PAM4,112,112.5,x8
