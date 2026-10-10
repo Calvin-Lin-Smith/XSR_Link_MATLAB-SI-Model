@@ -1,6 +1,6 @@
 # Simulink D2D PHY 路径
 
-Simulink 路径是独立的可视化 block diagram；MATLAB src/dsp 与 class model 仍是算法源，不把 GUI 嵌入模型。完整 paper 操作见 [VLSI2024 XSR 完整复现与演示指南](../GuideDoc/VLSI2024_XSR_SerDes_完整复现与演示指南.md)。
+Simulink 路径是独立的可视化 block diagram；MATLAB src/dsp 与 class model 仍是算法源，不把 GUI 嵌入模型。快速使用步骤与 paper 运行入口见 [项目 README](../README.md)。
 
 ## 生成器与选项
 

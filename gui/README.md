@@ -1,6 +1,6 @@
 # VLSI2024 XSR Paper GUI
 
-这是 paper-only workbench，不是通用 profile 或 T1–T9 GUI。完整字段、窗口公式、演示工况和排障见 [canonical 完整指南](../GuideDoc/VLSI2024_XSR_SerDes_完整复现与演示指南.md)。
+这是 paper-only workbench，不是通用 profile 或 T1–T9 GUI。入门步骤、命令行运行与结果解读见 [项目 README](../README.md)。
 
 ## 启动
 
@@ -36,7 +36,7 @@ app = launchD2DWorkbench();
 
 Open Paper Results 只打开结果目录，Clear Log 只清空 LogArea。GUI StatusLabel 的 Passed 表示 callback 未抛异常；性能是否有效要看 Debug.status 与 Result.berValid。
 
-Run x8 Link 的五个训练开关是 startupCalibration、clockTraining、samplerCalibration、ctleTraining、ffeTraining；另有 cdrEnabled、每阶段 UI budget、postLockWaitUI、manualPhaseUI/manualDelayUI。每行都在 trainedParameters 中分开报告 requested、trained、applied、residual、constraint、unit。CDR 有效时，8 lane 必须全部 lock；BER、eye、margin 和 performance 使用一个 global latest-lock post-lock window。
+Run x8 Link 的五个训练开关是 startupCalibration、clockTraining、samplerCalibration、ctleTraining、ffeTraining；另有 cdrEnabled、每阶段 UI budget、postLockWaitUI、manualPhaseUI/manualDelayUI。每行都在 trainedParameters 中分开报告 requested、trained、applied、residual、constraint、unit。CDR 有效时，8 lane 必须全部 lock；BER、eye、margin 和 performance 使用一个 global first-valid-lock-plus-guard post-lock window。
 
 ## Simulink round-trip
 
