@@ -47,7 +47,7 @@ app = launchD2DWorkbench();
 
 **Run x8 Link 仅返回内存结果。** **Apply + Sync** 会写入共享配置 `simulink/d2d_shared_config.mat`，并在默认模型 `D2D_PHY_SI_Simulink` 已加载且 Simulink 许可证可用时同步其 Model Workspace。单击运行不会隐式同步配置。
 
-GUI 各按钮与写盘行为见 [GUI 使用说明](gui/README.md)。
+GUI 的 Baseline、Calibration / Adaptation 和 Full VLSI2024 Regression 按钮对应下节的命令行入口，均会写入正式结果目录。
 
 ## 3. 命令行运行
 
@@ -127,7 +127,7 @@ mdl = buildD2DSimulinkModel( ...
 
 若 `xsr_demo.slx` 已存在，请换一个名称和路径。生成器会设置当前 MATLAB base workspace 和模型中的 `d2dCfg`，不会自动写共享 MAT 文件。
 
-框图信号流为 TX Bits → Raw PCS → TX PMA x8 → Channel x8 → RX PMA x8 → BER / RX Bits。正式链路测量使用 MATLAB CLI 或 GUI 入口；Simulink 图用于结构展示和配置同步。更多选项见 [Simulink 使用说明](simulink/README.md)。
+框图信号流为 TX Bits → Raw PCS → TX PMA x8 → Channel x8 → RX PMA x8 → BER / RX Bits。正式链路测量使用 MATLAB CLI 或 GUI 入口；Simulink 图用于结构展示和配置同步。生成器支持 `Config`、`ModelName`、`ModelPath`、`Open`、`Save` 和 `Overwrite` 选项。
 
 ## 5. 如何阅读结果
 
